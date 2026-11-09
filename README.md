@@ -53,10 +53,20 @@ prompt 以 `答案：` 结尾 → 一次 prefill → 直接读 A/B/C/D 四个 to
 
 ## 构建
 
+前置：JDK 17 + Android SDK（Platform 34、Build-Tools 34.0.0）。
+
 ```bash
+# 1. 指定 SDK 位置（Android Studio 用户通常已有此文件）
+echo "sdk.dir=/path/to/android-sdk" > local.properties
+
+# 2. 构建（bash；Windows 用 Git Bash）
 bash build.sh            # 默认 1 / 1.0.0
 bash build.sh 3 1.2.0    # versionCode 3, versionName 1.2.0
 ```
+
+- 签名密钥 `keystore/aianswer.jks` 不入库。没有它也能构建，产出**未签名 APK**；
+  想出签名包，把自建的 jks 放到 `keystore/aianswer.jks`（PKCS12，alias `qh`，密码可用环境变量 `KS_PASS`）
+- JDK / build-tools 路径可用环境变量 `JAVA_HOME`、`ANDROID_BT` 覆盖
 
 产物：`构建/AI答题-v<版本>.apk`（约 6.5 MB，不含模型）
 
