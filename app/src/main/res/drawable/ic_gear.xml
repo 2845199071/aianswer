@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 设置齿轮：外环 + 8 齿 + 中心轴，线性风格与底部四个图标统一 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M12,12 m-6.3,0 a6.3,6.3 0 1,0 12.6,0 a6.3,6.3 0 1,0 -12.6,0"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.8" />
+    <path
+        android:pathData="M12,12 m-2.5,0 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.8" />
+    <path
+        android:pathData="M18.3,12 L20.7,12 M16.4,16.4 L18.1,18.1 M12,18.3 L12,20.7 M7.6,16.4 L5.9,18.1 M5.7,12 L3.3,12 M7.6,7.6 L5.9,5.9 M12,5.7 L12,3.3 M16.4,7.6 L18.1,5.9"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="1.8" />
+</vector>

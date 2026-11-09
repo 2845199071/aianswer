@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  设置弹窗：解题行为 + 关于（使用说明 / 版本号）
+  这两个原来在底部工具行，都属于「配一次就不动」的内容，合并进齿轮。
+-->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:scrollbars="none">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingTop="20dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="16dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="设置"
+            android:textColor="@color/text_primary"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <!-- ============ 解题行为 ============ -->
+        <TextView
+            style="@style/DialogSection"
+            android:text="解题行为" />
+
+        <Switch
+            android:id="@+id/swClick"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="46dp"
+            android:text="自动点击选项"
+            android:textColor="@color/text_body"
+            android:textSize="14sp" />
+
+        <Switch
+            android:id="@+id/swVibrate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="46dp"
+            android:text="出答案时振动提示"
+            android:textColor="@color/text_body"
+            android:textSize="14sp" />
+
+        <Switch
+            android:id="@+id/swDual"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="46dp"
+            android:text="拿不准时复核（优先免费通道）"
+            android:textColor="@color/text_body"
+            android:textSize="14sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:lineSpacingExtra="3dp"
+            android:text="只在置信度低于下方阈值时复核；主路在线时用本地复核（免费），两路不同会标红且不自动点击"
+            android:textColor="@color/text_hint"
+            android:textSize="11sp" />
+
+        <View style="@style/DialogDivider" />
+
+        <TextView
+            android:id="@+id/tvTh"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="置信度阈值 55%"
+            android:textColor="@color/text_primary"
+            android:textSize="13sp" />
+
+        <SeekBar
+            android:id="@+id/sbTh"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:max="90"
+            android:progress="55" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="低于阈值时不自动点击，只显示答案让你自己判断"
+            android:textColor="@color/text_hint"
+            android:textSize="11sp" />
+
+        <!-- ============ 关于 ============ -->
+        <View style="@style/DialogDivider" />
+
+        <TextView
+            style="@style/DialogSection"
+            android:layout_marginTop="0dp"
+            android:text="使用说明" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:lineSpacingExtra="6dp"
+            android:text="1. 先开启「读屏」，没开读不到题目\n2. 配置在线模型或下载本地模型，打开对应开关\n3. 回到刷题页面自动出答案；也能点球上「识别」\n4. 拿不准时按阈值复核，两路不同会标红且不自动点\n5. 悬浮球可拖动，长按可换位置或收起"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/tvSettingsVersion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:text="version"
+            android:textColor="@color/text_hint"
+            android:textSize="11sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:lineSpacingExtra="3dp"
+            android:text="开启在线后题目会发送给所选服务商；只开本地则全部在本机推理。API Key 仅保存在本机。"
+            android:textColor="@color/text_hint"
+            android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/btnSaveSettings"
+            style="@style/PrimaryButton"
+            android:layout_marginTop="18dp"
+            android:text="完成" />
+    </LinearLayout>
+</ScrollView>

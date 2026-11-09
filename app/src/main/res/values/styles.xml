@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      固定白底 + 品牌蓝，避免跟随壁纸被 Material You 染成橙/粉色。
+      注意：只设 colorAccent 不够——Switch / RadioButton 用的是 colorControlActivated，
+      不显式设置的话在部分 ROM 上仍取系统动态色（之前截图里开关是棕色就是这个原因）。
+    -->
+    <style name="WhiteDialog" parent="@android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialog_bg</item>
+        <item name="android:backgroundDimAmount">0.42</item>
+        <item name="android:colorAccent">@color/brand</item>
+        <item name="android:colorControlActivated">@color/brand</item>
+        <item name="android:colorControlHighlight">@color/brand_ripple</item>
+        <item name="android:colorControlNormal">@color/text_hint</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_hint</item>
+    </style>
+
+    <!--
+      主界面主题。之前直接用 Theme.DeviceDefault.Light.NoActionBar，
+      Switch / SeekBar 会取系统动态色（壁纸取色 → 棕色），和品牌蓝冲突。
+      这里显式锁成品牌蓝。
+    -->
+    <style name="AppTheme" parent="@android:style/Theme.DeviceDefault.Light.NoActionBar">
+        <item name="android:windowBackground">@color/bg_page</item>
+        <!-- 蓝色沉浸顶栏：状态栏跟顶栏同色，图标走白色（必须显式关掉 light 标志） -->
+        <item name="android:statusBarColor">@color/brand</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:navigationBarColor">@color/bg_page</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:colorAccent">@color/brand</item>
+        <item name="android:colorControlActivated">@color/brand</item>
+        <item name="android:colorControlHighlight">@color/brand_ripple</item>
+        <item name="android:colorControlNormal">@color/text_hint</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_hint</item>
+    </style>
+
+    <!-- 卡片小标题：15sp 粗体 -->
+    <style name="CardTitle">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <!-- 卡片副标题 / 说明：12sp -->
+    <style name="CardSub">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/text_hint</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:lineSpacingExtra">3dp</item>
+    </style>
+
+    <!-- 卡片之间的分组小标签 -->
+    <style name="SectionLabel">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginStart">4dp</item>
+        <item name="android:layout_marginTop">12dp</item>
+        <item name="android:layout_marginBottom">7dp</item>
+        <item name="android:textColor">@color/text_hint</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+
+    <!-- 底部工具入口：主色浅底按钮块（图标 + 文字），一眼看出能点 -->
+    <style name="ToolTile">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">52dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:background">@drawable/tile_bg</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:gravity">center</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+
+    <!-- 弹窗内的小节标题 -->
+    <style name="DialogSection">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">14dp</item>
+        <item name="android:textColor">@color/text_hint</item>
+        <item name="android:textSize">11sp</item>
+    </style>
+
+    <!-- 弹窗分割线 -->
+    <style name="DialogDivider">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">1dp</item>
+        <item name="android:layout_marginTop">14dp</item>
+        <item name="android:layout_marginBottom">14dp</item>
+        <item name="android:background">@color/divider</item>
+    </style>
+
+    <!-- 双列次按钮（卡片式白块） -->
+    <style name="GhostButton">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:background">@drawable/card_tap</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">@color/text_body</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+
+    <!-- 主按钮：高 48、全圆角（规格 §4） -->
+    <style name="PrimaryButton">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:background">@drawable/btn_primary</item>
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:minHeight">0dp</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:stateListAnimator">@null</item>
+        <item name="android:letterSpacing">0</item>
+    </style>
+
+    <!-- 次按钮：高 48、全圆角，浅灰底 -->
+    <style name="SecondaryButton">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:background">@drawable/btn_secondary</item>
+        <item name="android:textColor">@color/text_body</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:minHeight">0dp</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:stateListAnimator">@null</item>
+        <item name="android:letterSpacing">0</item>
+    </style>
+
+    <!-- 分段控件：两段式选择（如「本地优先 / 在线优先」） -->
+    <style name="SegmentItem">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:paddingTop">9dp</item>
+        <item name="android:paddingBottom">9dp</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+</resources>

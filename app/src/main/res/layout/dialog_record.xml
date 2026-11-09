@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 二级弹窗：本场记录。统计 + 清理动作，主界面只留一行摘要和「复制」。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="20dp"
+    android:paddingTop="20dp"
+    android:paddingEnd="20dp"
+    android:paddingBottom="16dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="本场记录"
+        android:textColor="@color/text_primary"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/tvSession"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:lineSpacingExtra="4dp"
+        android:text="还没有记录"
+        android:textColor="@color/text_secondary"
+        android:textSize="13sp" />
+
+    <View style="@style/DialogDivider" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnCopy"
+            style="@style/SecondaryButton"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="复制答案" />
+
+        <Button
+            android:id="@+id/btnClearSession"
+            style="@style/SecondaryButton"
+            android:layout_width="0dp"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:text="清空本场" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnClearBank"
+            style="@style/SecondaryButton"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:text="清空题库记忆"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnResetCalls"
+            style="@style/SecondaryButton"
+            android:layout_width="0dp"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:text="清零在线计数"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:lineSpacingExtra="3dp"
+        android:text="「清空本场」只清列表和统计，题库记忆保留；「清空题库记忆」会让这些题下次重新推理。"
+        android:textColor="@color/text_hint"
+        android:textSize="11sp" />
+
+    <Button
+        android:id="@+id/btnCloseRecord"
+        style="@style/PrimaryButton"
+        android:layout_marginTop="16dp"
+        android:text="完成" />
+</LinearLayout>

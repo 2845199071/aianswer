@@ -1,0 +1,15 @@
+# 本地私有内容（不入库）
+keystore/
+keystore.properties
+local.properties
+构建/
+.gradle/
+build/
+app/build/
+captures/
+.idea/
+*.iml
+
+# 系统文件
+Thumbs.db
+.DS_Store

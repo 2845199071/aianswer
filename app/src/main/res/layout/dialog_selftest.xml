@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 二级弹窗：自测。手动试一道 + 性能自测，都属于排障性质。 -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingTop="20dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="16dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="自测"
+            android:textColor="@color/text_primary"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="手动喂一道题，验证模型和接口是否正常"
+            android:textColor="@color/text_hint"
+            android:textSize="11sp" />
+
+        <EditText
+            android:id="@+id/etQ"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/field_bg"
+            android:gravity="top"
+            android:hint="粘贴题干和选项，例如：&#10;以下哪个是电流单位&#10;A. 伏特&#10;B. 安培&#10;C. 欧姆&#10;D. 瓦特"
+            android:inputType="textMultiLine"
+            android:minLines="3"
+            android:padding="12dp"
+            android:textColor="@color/text_primary"
+            android:textColorHint="@color/text_hint"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/btnTry"
+            style="@style/PrimaryButton"
+            android:layout_marginTop="10dp"
+            android:text="算一下" />
+
+        <TextView
+            android:id="@+id/tvOut"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:lineSpacingExtra="3dp"
+            android:textColor="@color/text_body"
+            android:textSize="13sp" />
+
+        <View style="@style/DialogDivider" />
+
+        <Button
+            android:id="@+id/btnBench"
+            style="@style/SecondaryButton"
+            android:text="性能自测（5 题）" />
+
+        <TextView
+            android:id="@+id/tvBench"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:lineSpacingExtra="3dp"
+            android:textColor="@color/text_hint"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnCloseSelftest"
+            style="@style/PrimaryButton"
+            android:layout_marginTop="16dp"
+            android:text="关闭" />
+    </LinearLayout>
+</ScrollView>
