@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  设置弹窗（v7.2.8 分组版）
-  以前 8 个开关平铺，新用户不知道该先配哪个。现在按「干什么用的」分三组：
-    解题行为   —— 出答案时机器怎么动（点击、振动、多自信才动手）
-    模型与额度 —— 答案从哪来、花不花钱（题库/路由/投票/复核/解析）
-    关于       —— 说明、版本、隐私
-  分组标题沿用 DialogSection，颜色/字号不变，视觉风格保持一致。
+  设置弹窗（v7.7.8 卡片分组版）
+
+  以前是一个平铺的长列表：所有开关 + 说明文字连在一起，项与项之间只有几 px，
+  扫读时会串行，也看不出哪句说明属于哪个开关。
+  现在每项包进一个浅灰圆角块（style/SetItem），项间留 8dp，
+  说明文字缩进在同一个块里，归属一目了然。
+
+  分组仍按「干什么用的」分三段：解题行为 / 模型与额度 / 使用说明。
 -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -16,9 +18,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingStart="20dp"
+        android:paddingStart="18dp"
         android:paddingTop="20dp"
-        android:paddingEnd="20dp"
+        android:paddingEnd="18dp"
         android:paddingBottom="16dp">
 
         <TextView
@@ -32,86 +34,97 @@
         <!-- ==================== 一、解题行为 ==================== -->
         <TextView
             style="@style/DialogSection"
+            android:layout_marginTop="12dp"
             android:text="解题行为 · 机器怎么动手" />
 
-        <Switch
-            android:id="@+id/swClick"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="46dp"
-            android:text="自动点击选项"
-            android:textColor="@color/text_body"
-            android:textSize="14sp" />
+        <LinearLayout style="@style/SetItem">
+            <Switch
+                android:id="@+id/swClick"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="自动点击选项"
+                android:textColor="@color/text_body"
+                android:textSize="14sp" />
+        </LinearLayout>
 
-        <Switch
-            android:id="@+id/swHuman"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="46dp"
-            android:text="拟人点击（加入随机延迟与轻微偏移）"
-            android:textColor="@color/text_body"
-            android:textSize="14sp" />
+        <LinearLayout style="@style/SetItem">
+            <Switch
+                android:id="@+id/swHuman"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="拟人点击"
+                android:textColor="@color/text_body"
+                android:textSize="14sp" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:lineSpacingExtra="3dp"
-            android:text="只在「自动点击选项」打开时可用。点击会加 80~200ms 随机延迟、落点偏 ±3dp，只影响手感，不改变答案"
-            android:textColor="@color/text_hint"
-            android:textSize="11sp" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:lineSpacingExtra="3dp"
+                android:text="点击加 80~200ms 随机延迟、落点偏 ±3dp。只在「自动点击选项」打开时可用，只影响手感，不改变答案"
+                android:textColor="@color/text_hint"
+                android:textSize="11sp" />
+        </LinearLayout>
 
-        <Switch
-            android:id="@+id/swAutoNext"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="46dp"
-            android:text="答完自动点「下一题」"
-            android:textColor="@color/text_body"
-            android:textSize="14sp" />
+        <LinearLayout style="@style/SetItem">
+            <Switch
+                android:id="@+id/swAutoNext"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="答完自动点「下一题」"
+                android:textColor="@color/text_body"
+                android:textSize="14sp" />
 
-        <TextView
-            android:id="@+id/tvAutoNextHint"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:lineSpacingExtra="3dp"
-            android:text="只在自动点击成功后翻页，会一题接一题连答；找不到「下一题」会停下"
-            android:textColor="@color/text_hint"
-            android:textSize="11sp" />
+            <TextView
+                android:id="@+id/tvAutoNextHint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:lineSpacingExtra="3dp"
+                android:text="只在自动点击成功后翻页，会一题接一题连答；找不到「下一题」会停下"
+                android:textColor="@color/text_hint"
+                android:textSize="11sp" />
+        </LinearLayout>
 
-        <Switch
-            android:id="@+id/swVibrate"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="46dp"
-            android:text="出答案时振动提示"
-            android:textColor="@color/text_body"
-            android:textSize="14sp" />
+        <LinearLayout style="@style/SetItem">
+            <Switch
+                android:id="@+id/swVibrate"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="出答案时振动提示"
+                android:textColor="@color/text_body"
+                android:textSize="14sp" />
+        </LinearLayout>
 
-        <TextView
-            android:id="@+id/tvTh"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:text="多自信才自动点击 · 60%"
-            android:textColor="@color/text_primary"
-            android:textSize="13sp" />
+        <LinearLayout style="@style/SetItem">
+            <TextView
+                android:id="@+id/tvTh"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="多自信才自动点击 · 60%"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp" />
 
-        <SeekBar
-            android:id="@+id/sbTh"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:max="90"
-            android:progress="55" />
+            <SeekBar
+                android:id="@+id/sbTh"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:max="90"
+                android:progress="55" />
 
-        <TextView
-            android:id="@+id/tvThHint"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:lineSpacingExtra="3dp"
-            android:text=""
-            android:textColor="@color/text_hint"
-            android:textSize="11sp" />
+            <TextView
+                android:id="@+id/tvThHint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:lineSpacingExtra="3dp"
+                android:text=""
+                android:textColor="@color/text_hint"
+                android:textSize="11sp" />
+        </LinearLayout>
 
         <!-- ==================== 二、模型与额度 ==================== -->
         <View style="@style/DialogDivider" />
@@ -121,94 +134,110 @@
             android:layout_marginTop="0dp"
             android:text="模型与额度 · 答案从哪来" />
 
-        <Switch
-            android:id="@+id/swSelfFirst"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="46dp"
-            android:text="先查自选题库，没命中再问 AI"
-            android:textColor="@color/text_body"
-            android:textSize="14sp" />
+        <LinearLayout style="@style/SetItem">
+            <Switch
+                android:id="@+id/swSelfFirst"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="先查自选题库，没命中再问 AI"
+                android:textColor="@color/text_body"
+                android:textSize="14sp" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:lineSpacingExtra="3dp"
-            android:text="题库命中是毫秒级、不花在线额度；没有导入题库时此项不生效。手动点悬浮球「识别」会跳过题库，直接问模型复核"
-            android:textColor="@color/text_hint"
-            android:textSize="11sp" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:lineSpacingExtra="3dp"
+                android:text="题库命中是毫秒级、不花在线额度；没导入题库时此项不生效。手动点悬浮球「识别」会跳过题库直接问模型复核"
+                android:textColor="@color/text_hint"
+                android:textSize="11sp" />
+        </LinearLayout>
 
-        <Switch
-            android:id="@+id/swRoute"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="46dp"
-            android:text="自动选择模型（按题型路由）"
-            android:textColor="@color/text_body"
-            android:textSize="14sp" />
+        <LinearLayout style="@style/SetItem">
+            <Switch
+                android:id="@+id/swRoute"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="自动选择模型（按题型路由）"
+                android:textColor="@color/text_body"
+                android:textSize="14sp" />
 
-        <TextView
-            android:id="@+id/tvRouteHint"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:lineSpacingExtra="3dp"
-            android:text="短题/常识走本地，数学计算、文言文、长题干、多选多项走在线"
-            android:textColor="@color/text_hint"
-            android:textSize="11sp" />
+            <TextView
+                android:id="@+id/tvRouteHint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:lineSpacingExtra="3dp"
+                android:text="短题/常识走本地，数学计算、文言文、长题干、多选多项走在线"
+                android:textColor="@color/text_hint"
+                android:textSize="11sp" />
+        </LinearLayout>
 
-        <Switch
-            android:id="@+id/swVote"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="46dp"
-            android:text="多模型投票（取多数答案）"
-            android:textColor="@color/text_body"
-            android:textSize="14sp" />
+        <LinearLayout style="@style/SetItem">
+            <Switch
+                android:id="@+id/swVote"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="多模型投票（取多数答案）"
+                android:textColor="@color/text_body"
+                android:textSize="14sp" />
 
-        <TextView
-            android:id="@+id/tvVoteHint"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:lineSpacingExtra="3dp"
-            android:text="需要 2 个以上已填 Key 的在线模型才能开启"
-            android:textColor="@color/text_hint"
-            android:textSize="11sp" />
+            <TextView
+                android:id="@+id/tvVoteHint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:lineSpacingExtra="3dp"
+                android:text="需要 2 个以上已填 Key 的在线模型才能开启"
+                android:textColor="@color/text_hint"
+                android:textSize="11sp" />
 
-        <Switch
-            android:id="@+id/swDual"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="46dp"
-            android:text="拿不准时复核（优先免费通道）"
-            android:textColor="@color/text_body"
-            android:textSize="14sp" />
+            <!-- 明显的入口：点这里挑哪几家参与投票，全不选即关闭 -->
+            <TextView
+                android:id="@+id/tvVotePick"
+                style="@style/SetPick"
+                android:text="选择参与投票的模型 ›" />
+        </LinearLayout>
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:lineSpacingExtra="3dp"
-            android:text="只在置信度低于上面的阈值时复核；两路不同会标红且不自动点击。开启投票后此项自动关闭（避免一次答题跑三四次）"
-            android:textColor="@color/text_hint"
-            android:textSize="11sp" />
+        <LinearLayout style="@style/SetItem">
+            <Switch
+                android:id="@+id/swDual"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="拿不准时复核（优先免费通道）"
+                android:textColor="@color/text_body"
+                android:textSize="14sp" />
 
-        <Switch
-            android:id="@+id/swExplain"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="46dp"
-            android:text="出答案附一句解析"
-            android:textColor="@color/text_body"
-            android:textSize="14sp" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:lineSpacingExtra="3dp"
+                android:text="只在置信度低于上面的阈值时复核；两路不同会标红且不自动点击。开启投票后此项自动关闭，避免一次答题跑三四次"
+                android:textColor="@color/text_hint"
+                android:textSize="11sp" />
+        </LinearLayout>
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:lineSpacingExtra="3dp"
-            android:text="题库自带的解析直接显示（不花钱）；AI 出的答案才会再花一次调用生成。悬浮窗显示两行，点一下看全文"
-            android:textColor="@color/text_hint"
-            android:textSize="11sp" />
+        <LinearLayout style="@style/SetItem">
+            <Switch
+                android:id="@+id/swExplain"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:text="出答案附一句解析"
+                android:textColor="@color/text_body"
+                android:textSize="14sp" />
 
-        <!-- ==================== 三、关于 ==================== -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:lineSpacingExtra="3dp"
+                android:text="题库自带的解析直接显示，不花钱；AI 出的答案才会再花一次调用生成。悬浮窗显示两行，点一下看全文"
+                android:textColor="@color/text_hint"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <!-- ==================== 三、使用说明 ==================== -->
         <View style="@style/DialogDivider" />
 
         <TextView
@@ -216,14 +245,16 @@
             android:layout_marginTop="0dp"
             android:text="使用说明" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:lineSpacingExtra="6dp"
-            android:text="1. 先开启「读屏」并授权悬浮窗，否则读不到题目\n2. 配一种解题方式：在线填 Key，或下载本地模型\n3. 有自选题库就先导入（题库 → 自选题库），命中直接出答案\n4. 答案顺序：自选题库 → 本机记忆 → 投票/路由 → AI\n5. 悬浮球可拖动，长按可换模式；点「识别」强制问一次模型"
-            android:textColor="@color/text_secondary"
-            android:textSize="12sp" />
+        <LinearLayout style="@style/SetItem">
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:lineSpacingExtra="6dp"
+                android:text="1. 先开启「读屏」并授权悬浮窗，否则读不到题目\n2. 配一种解题方式：在线填 Key，或下载本地模型\n3. 有自选题库就先导入（题库 → 自选题库），命中直接出答案\n4. 答案顺序：自选题库 → 本机记忆 → 投票/路由 → AI\n5. 悬浮球可拖动，长按可换模式；点「识别」强制问一次模型"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/tvSettingsVersion"

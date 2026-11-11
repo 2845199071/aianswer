@@ -255,10 +255,10 @@ public final class Record {
         sp(c).edit().putString(K_BANK + b.key, toJson(b)).apply();
     }
 
-    /** 兼容老调用：只要答案字母。有分歧的题不静默命中，交给模型+人来判。 */
+    /** 兼容老调用：只要答案字母。未确认、或有分歧的题一律不返回。 */
     public static String bankAnswer(Context c, String sig) {
         Bank b = bankGet(c, sig);
-        if (b == null || b.hasConflict()) return null;
+        if (b == null || b.hasConflict() || !b.verified) return null;
         return b.a;
     }
 
@@ -309,7 +309,10 @@ public final class Record {
             // 模型这次和题库一致：旧分歧已经没有意义，清掉，否则这道题会永远标着「分歧」
             // 每次都强制跑模型复核，白白消耗在线额度
             if (!b.cf.isEmpty()) b.cf.clear();
-            b.verified = true;       // 两次独立作答一致 = 自动审核通过
+            // 注意：这里**不**自动置 verified。
+            // 记忆库只有在用户亲手确认过之后才允许 0ms 直出；
+            // 模型自己答两次一致不算数——上次要是错的，两次一致只会错得更稳定。
+            // 已经确认过的条目保持 true，不被这次写回降级。
             bankPut(c, b);
             return hit;
         }

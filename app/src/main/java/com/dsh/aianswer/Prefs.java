@@ -31,7 +31,8 @@ public final class Prefs {
     private static final String K_HUMAN     = "human_click";   // 拟人点击（默认关）
     private static final String K_AUTO_NEXT = "auto_next";     // 答完自动点下一题（默认关）
     private static final String K_ROUTE     = "auto_route";    // 按题型自动选模型
-    private static final String K_VOTE      = "vote";          // 多模型投票
+    private static final String K_VOTE      = "vote";          // 多模型投票（旧：只有开关）
+    private static final String K_VOTE_IDS  = "vote_ids";      // 新：参与投票的厂商 id，逗号分隔
     private static final String K_SELF_FIRST= "self_bank_first"; // 先查自选题库，未命中再问 AI
     private static final String K_ACC_GUIDED = "acc_guided";    // 首次读屏引导是否已弹过
 
@@ -189,13 +190,60 @@ public final class Prefs {
     public static boolean humanClick(Context c) { return sp(c).getBoolean(K_HUMAN, false); }
     public static void setHumanClick(Context c, boolean v) { sp(c).edit().putBoolean(K_HUMAN, v).apply(); }
 
-    /** 按题型自动选模型（短题走本地、数学/文言/长题走在线）。默认开，可在设置里关。 */
-    public static boolean autoRoute(Context c) { return sp(c).getBoolean(K_ROUTE, true); }
+    /**
+     * 按题型自动选模型（短题走本地、数学/文言/长题走在线）。
+     * **默认关闭**：路由会让「这题到底走的哪条通道」变得不直观，用户排查答案来源时容易困惑；
+     * 需要省额度时再手动打开。
+     */
+    public static boolean autoRoute(Context c) { return sp(c).getBoolean(K_ROUTE, false); }
     public static void setAutoRoute(Context c, boolean v) { sp(c).edit().putBoolean(K_ROUTE, v).apply(); }
 
-    /** 多模型投票：需要 ≥2 个在线厂商，开启后复核自动让位。 */
-    public static boolean vote(Context c) { return sp(c).getBoolean(K_VOTE, false); }
-    public static void setVote(Context c, boolean v) { sp(c).edit().putBoolean(K_VOTE, v).apply(); }
+    /**
+     * 参与投票的厂商 id 列表；空集合 = 关闭投票。
+     * 用户可以在设置里只挑几家参与，不必把填过 Key 的全部拉进来。
+     */
+    public static java.util.Set<String> voteProviders(Context c) {
+        java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
+        String s = sp(c).getString(K_VOTE_IDS, null);
+        if (s == null) {
+            // 老版本只有总开关：开着就按「全部已配置」迁移一次，行为保持一致
+            if (sp(c).getBoolean(K_VOTE, false)) {
+                for (CloudSolver.Provider p : cloudReadyList(c)) out.add(p.id);
+            }
+            return out;
+        }
+        for (String x : s.split(",")) {
+            String t = x.trim();
+            if (!t.isEmpty()) out.add(t);
+        }
+        return out;
+    }
+
+    public static void setVoteProviders(Context c, java.util.Set<String> ids) {
+        StringBuilder sb = new StringBuilder();
+        if (ids != null) {
+            for (String x : ids) {
+                if (x == null || x.trim().isEmpty()) continue;
+                if (sb.length() > 0) sb.append(',');
+                sb.append(x.trim());
+            }
+        }
+        sp(c).edit().putString(K_VOTE_IDS, sb.toString()).apply();
+    }
+
+    /** 投票是否开启：选了一家就算开（全不选即关闭）。 */
+    public static boolean vote(Context c) { return !voteProviders(c).isEmpty(); }
+
+    /** 兼容旧调用：true = 选中全部已配置，false = 清空（关闭投票）。 */
+    public static void setVote(Context c, boolean v) {
+        if (!v) {
+            setVoteProviders(c, new java.util.LinkedHashSet<String>());
+            return;
+        }
+        java.util.LinkedHashSet<String> all = new java.util.LinkedHashSet<>();
+        for (CloudSolver.Provider p : cloudReadyList(c)) all.add(p.id);
+        setVoteProviders(c, all);
+    }
 
     /**
      * 先查自选题库、没命中再问 AI。默认开。
@@ -207,5 +255,26 @@ public final class Prefs {
     public static boolean selfBankFirst(Context c) { return sp(c).getBoolean(K_SELF_FIRST, true); }
     public static void setSelfBankFirst(Context c, boolean v) {
         sp(c).edit().putBoolean(K_SELF_FIRST, v).apply();
+    }
+
+    /**
+     * 视觉识别的「题目区域」缓存（按包名 + 屏幕尺寸）。
+     *
+     * <p>整屏 1280×2772 里有大半个屏幕是广告、会员条、底部导航，全发给模型既慢又贵。
+     * 第一次整屏识别时，模型会返回每个选项的坐标，据此反推出题干 + 选项所在的矩形，
+     * 之后同一页面只发这一块。布局变了会让结果变差，那时代码会自动清掉缓存重来。
+     */
+    private static final String K_VISION_CROP = "vision_crop";
+
+    public static String visionCrop(Context c) { return sp(c).getString(K_VISION_CROP, ""); }
+    public static void setVisionCrop(Context c, String v) {
+        sp(c).edit().putString(K_VISION_CROP, v == null ? "" : v).apply();
+    }
+
+    /** 用户亲手校准过：自动推断就不许再覆盖它。 */
+    private static final String K_VISION_MANUAL = "vision_crop_manual";
+    public static boolean visionCropManual(Context c) { return sp(c).getBoolean(K_VISION_MANUAL, false); }
+    public static void setVisionCropManual(Context c, boolean v) {
+        sp(c).edit().putBoolean(K_VISION_MANUAL, v).apply();
     }
 }

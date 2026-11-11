@@ -6,6 +6,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -37,7 +38,23 @@ public class QService extends AccessibilityService {
     private String lastSig = "";                 // 上一道题的稳定签名（题干+选项，已剥离动态内容）
     private long lastAnswerAt = 0;               // 上一次出答案的时刻，用于冷却
     private volatile String lastLetters = "";
+    private long lastFailAt = 0;                   // 失败提示/快照的节流
+    private String lastFailKey = "";
+    private volatile boolean ocrBusy = false;      // 图片识别进行中，防止叠加重入
+    private long lastOcrAt = 0;                    // 两次图片识别的最小间隔
+    private volatile String lastOcrOpts = "";      // 上一轮图片识别处理过的选项（归一化），用于同题判重
+    private volatile String lastOcrQ = "";         // 上一轮的题干（归一化）
+    private String ocrPkg = "";                    // 截图时的页面包名
+    private String ocrHintedPkg = "";              // 已经提示过「自动切图片识别」的包名
+    private boolean ocrVerify = false;
     private volatile boolean hurryMode = false;   // 屏幕上检测到倒计时：少问几家、快点出
+    /** 悬浮窗点一下 = 临时暂停/恢复自动模式。只拦「自动动作」，开关本身不变，手动点「识别」仍然可用。 */
+    private static volatile boolean autoPaused = false;
+    private volatile boolean visionBusy = false;  // 视觉（截图直发模型）进行中
+    private long lastVisionAt = 0;                // 两次视觉调用的最小间隔
+    private volatile String lastVisionQ = "";     // 上一轮视觉答过的题（归一化），用于同题判重
+    private String visionPkg = "";                // 视觉截图时的页面包名
+    private String visionHintedPkg = "";          // 已经提示过「改成看图答题」的包名
     private volatile long lastNextAt = 0;         // 上次点「下一题」的时刻，防连点
     private volatile String answerPkg = "";       // 刚答题的那个 App：翻页只能在它里面翻
 
@@ -49,6 +66,9 @@ public class QService extends AccessibilityService {
      */
     private final Runnable nextRun = new Runnable() {
         public void run() {
+            // 自动翻页是「自动解题」的配套动作：暂停中、或手动模式下都不翻。
+            // 手动模式点一次「识别」= 只答眼前这一题，翻页留给用户自己。
+            if (autoPaused || !Prefs.autoAnswer(QService.this)) return;
             if (!Prefs.autoNext(QService.this) || !Prefs.autoClick(QService.this)) return;
             long now = System.currentTimeMillis();
             if (now - lastNextAt < 1200) return;              // 防连点，两次翻页至少要隔这么久
@@ -71,10 +91,13 @@ public class QService extends AccessibilityService {
             if (ScreenScan.click(QService.this, cur.next, Prefs.humanClick(QService.this))) {
                 lastNextAt = now;
                 Log.i(TAG, "点击下一题");
-                // 有些页面翻页只改局部内容、不产生无障碍事件，主动叫醒一次识别，
-                // 否则会停在上一题的答案上等用户手动操作
+                // 有些页面翻页只改局部内容、不产生无障碍事件，主动叫醒一次识别。
+                // 但「叫醒后解下一题」属于自动解题 —— 手动模式下翻页只是把页面翻过去，
+                // 下一题留给用户自己决定。之前这里没检查开关，手动点一次就一路自动做下去。
                 h.removeCallbacks(fire);
-                h.postDelayed(fire, 700);
+                if (Prefs.autoAnswer(QService.this)) {
+                    h.postDelayed(fire, 700);
+                }
             } else {
                 Log.i(TAG, "「下一题」点击失败");
             }
@@ -222,9 +245,565 @@ public class QService extends AccessibilityService {
             public void run() {
                 s.lastSig = "";        // 清掉判重，同一题也能重算
                 s.lastAnswerAt = 0;    // 跳过冷却
+                s.lastOcrAt = 0;       // 手动识别不受图片识别的降频限制
+                s.lastOcrOpts = "";   // 同一题也允许重新识别（复核）
+                s.lastOcrQ = "";
+                s.lastVisionQ = "";   // 视觉路线同样
+                s.lastVisionAt = 0;
                 s.verifyBank = true;   // 题库命中也走一遍模型，用来复核
                 s.h.removeCallbacks(s.fire);
                 s.tick();
+            }
+        });
+    }
+
+    /**
+     * 读屏没过时把原因写在悬浮窗上，并导出一份原始节点快照。
+     * 以前这些分支都是静默 return，界面永远停在「识别中…」，看起来像卡死。
+     * 快照写入有 2.5 秒节流，避免倒计时页面每拍都写文件。
+     */
+    private void fail(String title, String detail) {
+        Overlay.get(this).update(title, "读屏未通过 · " + detail);
+        long now = System.currentTimeMillis();
+        String key = title + "/" + detail;
+        if (now - lastFailAt < 2500 && key.equals(lastFailKey)) return;
+        lastFailAt = now;
+        lastFailKey = key;
+        try {
+            DiagDump.write(this, ScreenScan.capture(this), key);
+        } catch (Throwable ignored) { }
+    }
+
+    /**
+     * 页面像不像答题页。
+     *
+     * <p>「读屏认不出选项」不等于「这是答题页」——微信聊天、桌面、设置页同样认不出。
+     * 不先判一下的话，用户随便刷别的页面也会被截图发到云端，既费额度又泄露隐私。
+     * 特征词命中任一，或者页面上有 3 个以上独立字母节点，才认为是题目页。
+     */
+    private static boolean looksLikeQuiz(ScreenScan.Result r) {
+        if (r == null || r.texts == null || r.texts.size() < 3) return false;
+        int loneLetters = 0;
+        for (String t : r.texts) {
+            if (t == null) continue;
+            String s = t.trim();
+            if (s.isEmpty()) continue;
+            if (s.length() == 1 && "ABCDEF".indexOf(Character.toUpperCase(s.charAt(0))) >= 0) {
+                loneLetters++;
+                continue;
+            }
+            if (s.contains("答题") || s.contains("背题") || s.contains("提交答案")
+                    || s.contains("下一题") || s.contains("单选") || s.contains("多选")
+                    || s.contains("判断") || s.contains("选择题") || s.contains("交卷")
+                    || s.contains("正确") || s.contains("错误")) {
+                return true;
+            }
+        }
+        return loneLetters >= 3;
+    }
+
+    /**
+     * 读屏一个选项都认不出来时的图片识别兜底（自动生效，不需要开关）。
+     *
+     * @return true = 已经接手（异步进行中），调用方不要再去报「没认出选项」
+     */
+    /**
+     * 读屏读不到文字时的**默认**兜底：截图直接交给视觉模型读题答题（不走 OCR）。
+     *
+     * <p>小程序 / Canvas 自绘页面的无障碍树里根本没有题目文字，OCR 再怎么调也只能
+     * 把图片认成字、再猜错几个；视觉模型是端到端理解图像，题干、选项、答案一次给全，
+     * 而且不用先转成文字再让文本模型猜一遍，链路上少一次损耗。
+     *
+     * @return true = 已经接手（异步进行中），调用方不要再去报「没认出选项」
+     */
+    private boolean tryVision(boolean verify, ScreenScan.Result r) {
+        if (!Prefs.cloudOn(this)) return false;              // 在线关着，不偷偷调云端
+        if (!VisionSolver.available(this)) return false;     // 没配视觉模型 → 交给 OCR 兜底
+        // 不像答题页就不截（防止在聊天页/桌面乱上传）；但用户手动点「识别」时例外 ——
+        // 读屏完全读不到内容时，用户点这一下就是明确要求「看图答题」。
+        if (!looksLikeQuiz(r) && !verify) return false;
+
+        long now = System.currentTimeMillis();
+        if (visionBusy) return true;
+        // 刚在这一页答完题：画面多半已经变成结果页，别为同一道题再花一次调用
+        if (r != null && answerPkg.equals(r.pkg) && now - lastAnswerAt < 12000) return true;
+        if (now - lastVisionAt < 6000) return true;
+        lastVisionAt = now;
+        visionBusy = true;
+        final String pkg = r == null || r.pkg == null ? "" : r.pkg;
+        visionPkg = pkg;
+
+        // 每个 App 只解释一次「为什么突然开始看图」，之后安静工作
+        if (!pkg.equals(visionHintedPkg)) {
+            visionHintedPkg = pkg;
+            Overlay.get(this).update("看图答题中…", "读屏读不到题目 · 改成截图交给模型");
+        } else {
+            Overlay.get(this).update("看图答题中…", "");
+        }
+
+        // 截图前把自己藏起来：悬浮窗会被一起拍进画面，模型会把「识别中…」当成题目内容
+        Overlay.get(this).setInvisible(true);
+        h.postDelayed(() -> captureForVision(pkg, verify), 80);
+        return true;
+    }
+
+    /** 悬浮窗隐藏后稍等一帧再截，避免拍到还没重绘的残影。 */
+    private void captureForVision(final String pkg, final boolean verify) {
+        OcrEngine.captureAsync(this, new OcrEngine.Callback() {
+            public void onBitmap(Bitmap bmp, String err) {
+                Overlay.get(QService.this).setInvisible(false);
+                if (bmp == null) {
+                    visionBusy = false;
+                    fail("截图失败", err == null ? "未知原因" : err);
+                    return;
+                }
+                dumpScreen(bmp);          // 调试用：原屏留一份，好和裁剪后的图对比
+                final Bitmap b = bmp;
+                new Thread(new Runnable() {
+                    public void run() {
+                        // 只读题、不判断答案：答案交给题库和文本模型（视觉看着图答更容易错）
+                        final VisionSolver.Result vr = VisionSolver.read(QService.this, b, pkg);
+                        try { b.recycle(); } catch (Throwable ignored) { }   // 这一帧不落盘，用完即弃
+                        h.post(new Runnable() {
+                            public void run() { onVisionAuto(vr, pkg, verify); }
+                        });
+                    }
+                }, "vision").start();
+            }
+        });
+    }
+
+    /** 调试用：把这一帧原屏存一份（覆盖写、长边压到 1000px），用来核对裁剪区域对不对。 */
+    private void dumpScreen(Bitmap bmp) {
+        try {
+            java.io.File dir = getExternalFilesDir(null);
+            if (dir == null) return;
+            int w = bmp.getWidth(), h = bmp.getHeight();
+            float sc = Math.min(1f, 1000f / Math.max(w, h));
+            Bitmap s = sc < 1f
+                    ? Bitmap.createScaledBitmap(bmp, Math.round(w * sc), Math.round(h * sc), true)
+                    : bmp;
+            java.io.FileOutputStream fo =
+                    new java.io.FileOutputStream(new java.io.File(dir, "screen_last.jpg"));
+            s.compress(Bitmap.CompressFormat.JPEG, 60, fo);
+            fo.close();
+            if (s != bmp) s.recycle();
+        } catch (Throwable ignored) { }
+    }
+
+    /**
+     * 自动路径的视觉结果落地：转成和读屏完全一样的两份结构，交给 {@link #onAnswer}，
+     * 于是题库写回、自动点击、翻页、悬浮窗显示全部复用同一套逻辑。
+     */
+    private void onVisionAuto(VisionSolver.Result vr, String pkg, boolean verify) {
+        visionBusy = false;
+        if (vr == null) { fail("看图读题失败", "没有返回内容"); return; }
+        if (vr.error != null) { fail("看图读题失败", vr.error); return; }
+
+        final String q = Layout.stripDynamic(vr.question == null ? "" : vr.question);
+        if (q.length() < 4) {
+            fail("看图没读出题干", "模型返回内容里没有题目");
+            return;
+        }
+
+        // 同题判重：结果页里题目还在，不拦一下会每几秒重读一遍
+        String vq = Matcher.norm(q);
+        if (vq.length() >= 4 && OcrText.similar(vq, lastVisionQ) >= 0.90f) {
+            Log.i(TAG, "视觉：同一题已经读过，跳过本轮");
+            lastVisionAt = System.currentTimeMillis() + 15000;
+            return;
+        }
+        lastVisionQ = vq;
+
+        ScreenScan.Result r = new ScreenScan.Result();
+        r.pkg = pkg;
+        r.question = q;
+        for (VisionSolver.Option o : vr.options) {
+            ScreenScan.Opt so = new ScreenScan.Opt();
+            so.letter = o.letter;
+            so.text = o.text;
+            so.box = o.box;              // 有坐标就能按坐标点，没有就只显示答案
+            r.options.add(so);
+            r.texts.add(o.letter + ". " + o.text);
+        }
+        if (r.options.size() < 2) {
+            fail("看图没认出选项", "只认出 " + r.options.size() + " 个，至少需要 2 个");
+            return;
+        }
+        // 题型标记：isMulti() 靠 texts 里的「多选/不定项/至少」判断，缺了它多选题会被当单选，
+        // 文本模型就只给一个字母（实测多选题全中招）。
+        String tp = vr.type == null ? "" : vr.type;
+        if (tp.contains("多选") || tp.contains("不定项") || tp.contains("至少")) {
+            r.texts.add("多选");
+        }
+        Log.i(TAG, "视觉读题 " + r.options.size() + " 个选项 / 题型 " + (tp.isEmpty() ? "未知" : tp)
+                + " / " + vr.ms + "ms → 交给题库和模型判定");
+        // 走和读屏完全一样的判定链：自选题库 → 记忆库 → 文本模型
+        handle(r, verify);
+    }
+
+    private boolean tryOcr(boolean verify, ScreenScan.Result r) {
+        if (!OcrEngine.supported()) return false;
+        if (!looksLikeQuiz(r)) return false;                  // 不像答题页，绝不截图
+        long now = System.currentTimeMillis();
+        if (ocrBusy) return true;
+        // 刚在同一个页面答完题，接下来几秒页面通常只是变成「结果页」——
+        // 看着像同一道题、内容又已经变了，最容易被当成新题重复答题、重复点击。
+        if (r != null && answerPkg.equals(r.pkg) && now - lastAnswerAt < 10000) return true;
+        // 同一个页面会持续产生 CONTENT_CHANGED 事件，不拦一下会每来一次就截一次图
+        if (now - lastOcrAt < 5000) return true;
+        lastOcrAt = now;
+        ocrBusy = true;
+        ocrPkg = r.pkg == null ? "" : r.pkg;
+        ocrVerify = verify;
+
+        // 每个 App 只解释一次「为什么突然在截图」，之后安静工作，不再打扰
+        if (!ocrPkg.equals(ocrHintedPkg)) {
+            ocrHintedPkg = ocrPkg;
+            Overlay.get(this).update("已切图片识别",
+                    "读屏读不到题目 · 改成截图认字，稍等");
+        } else {
+            Overlay.get(this).update("图片识别中…", "正在截屏认字");
+        }
+        OcrEngine.captureAsync(this, new OcrEngine.Callback() {
+            public void onBitmap(Bitmap bmp, String err) {
+                if (bmp == null) {
+                    ocrBusy = false;
+                    fail("截图失败", err == null ? "未知原因" : err);
+                    return;
+                }
+                final Bitmap b = bmp;
+                new Thread(new Runnable() {
+                    public void run() {
+                        OcrEngine.Hit r;
+                        try {
+                            r = OcrEngine.recognize(QService.this, b);
+                        } finally {
+                            // 识别完立刻释放这一帧（整屏 ARGB_8888 约 14MB），不进堆、不落盘
+                            try { b.recycle(); } catch (Throwable ignored) { }
+                        }
+                        final OcrEngine.Hit hit = r;
+                        h.post(new Runnable() {
+                            public void run() {
+                                ocrBusy = false;
+                                applyOcr(hit);
+                            }
+                        });
+                    }
+                }, "ocr").start();
+            }
+        });
+        return true;
+    }
+
+    /**
+     * 把本地识别出来的文字交给**与读屏完全相同**的版面解析，再走同一条解题链。
+     * 这样图片识别不是另起一套，题库、记忆库、题型路由、投票、自动点击全都自动生效。
+     */
+    private void applyOcr(OcrEngine.Hit hit) {
+        if (hit == null) {
+            DiagDump.writeOcr(this, null, null, "没有返回内容");
+            fail("图片识别失败", "没有返回内容");
+            return;
+        }
+        if (hit.lines.size() < 2) {
+            DiagDump.writeOcr(this, hit, null, "识别行数为 " + hit.lines.size());
+            fail("图片识别失败", hit.error == null ? "截图里没识别到文字" : hit.error);
+            return;
+        }
+
+        // 先过一遍 OCR 专用的行整理：去悬浮窗/状态栏/题型标签、把拆开的字母和文字合起来
+        java.util.List<OcrEngine.Line> lines = OcrText.normalize(hit.lines);
+        if (lines.size() < 2) {
+            DiagDump.writeOcr(this, hit, null, "清洗后只剩 " + lines.size() + " 行");
+            fail("图片识别失败", "截图里可用文字太少");
+            return;
+        }
+        java.util.List<String> texts = new ArrayList<>();
+        java.util.List<int[]> pos = new ArrayList<>();
+        for (OcrEngine.Line l : lines) {
+            texts.add(l.text);
+            pos.add(new int[]{l.top, l.left});
+        }
+        Layout.Parsed p = Layout.parse(texts, pos);
+
+        // 几何阈值全部按屏幕比例算，换设备（720p / 2K / 平板）不会失准
+        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+        OcrText.Metrics metrics = new OcrText.Metrics(dm.widthPixels, dm.heightPixels);
+
+        // 几何校验：按「字母递增 + 纵向等距 + 左边界对齐」找真正的选项列。
+        // 广告文案天天变，但它改不了「跟选项不在同一列」这件事。
+        OcrText.Block blk = OcrText.findOptionBlock(lines, metrics);
+        boolean useGeo = blk != null && blk.idx.size() >= 2;
+        int optCount = useGeo ? blk.idx.size() : (p.options == null ? 0 : p.options.size());
+        int firstOpt = useGeo ? blk.idx.get(0)
+                : (p.options == null || p.options.isEmpty() ? -1 : p.options.get(0).index);
+
+        if (optCount < 2) {
+            DiagDump.writeOcr(this, hit, p, "没凑出选项（清洗后 " + lines.size()
+                    + " 行 · 几何 " + (blk == null ? 0 : blk.idx.size())
+                    + " · 解析 " + (p.options == null ? 0 : p.options.size()) + "）");
+            fail("图片识别无选项", "认到 " + lines.size() + " 行文字，但没凑出 A/B/C 选项");
+            return;
+        }
+
+        // 题干取「选项列正上方」那些行；几何定位比纯解析可靠，太短再用解析结果兜底。
+        String q = OcrText.extractQuestion(lines, firstOpt, metrics);
+        if (q.length() < 4) q = p.question == null ? "" : p.question.trim();
+        p.question = q;
+        DiagDump.writeOcr(this, hit, p, "题干长度 " + q.length()
+                + " · 选项来源 " + (useGeo ? "几何" : "解析") + " · " + optCount + " 个");
+
+        ScreenScan.Result r = new ScreenScan.Result();
+        r.pkg = ocrPkg;
+        r.question = p.question;
+        // 题型标签（`/多选`）在清洗时被剔除了，从原始行里补一个标记，
+        // 否则多选题会被当成单选题，只给一个字母。
+        for (OcrEngine.Line raw : hit.lines) {
+            if (raw.text == null) continue;
+            if (raw.text.contains("多选") || raw.text.contains("不定项")) {
+                r.texts.add("多选");
+                break;
+            }
+        }
+        if (useGeo) {
+            for (int k = 0; k < blk.idx.size(); k++) {
+                OcrEngine.Line l = lines.get(blk.idx.get(k));
+                ScreenScan.Opt o = new ScreenScan.Opt();
+                o.letter = String.valueOf(blk.letters.charAt(k));
+                // 符号归一：`≤` 在 ML Kit 里会被认成 K / 公 / 不 / A K 等多种样子
+                o.text = OcrText.fixOptionBody(l.text);
+                if (l.right > l.left && l.bottom > l.top) {
+                    o.box = new int[]{l.left, l.top, l.right, l.bottom};
+                }
+                r.options.add(o);
+                r.texts.add(o.text);
+            }
+        } else {
+            for (Layout.Opt lo : p.options) {
+                ScreenScan.Opt o = new ScreenScan.Opt();
+                o.letter = lo.letter;
+                o.text = OcrText.fixOptionBody(lo.text);
+                if (lo.index >= 0 && lo.index < lines.size()) {
+                    OcrEngine.Line l = lines.get(lo.index);
+                    if (l.right > l.left && l.bottom > l.top) {
+                        o.box = new int[]{l.left, l.top, l.right, l.bottom};
+                    }
+                }
+                r.options.add(o);
+                r.texts.add(lo.text == null ? "" : lo.text);
+            }
+        }
+        // 同题判重（图片识别版）。
+        //
+        // 读屏一直失败时，这套 OCR 会每隔几秒重跑一次；同一道题答完后页面变成「结果页」，
+        // 内容看着像、其实已经变了，会被当成新题反复答题、反复点击。
+        // 两道闸：① 结果页特征（「正确答案 B」「您选择 A」）——最可靠；
+        //          ② 题干 + 选项归一化后的相似度 —— 兜住结果页文字还没渲染出来的情况。
+        // 手动点「识别」（ocrVerify）不判重：用户就是要重新看一遍。
+        // 选项文字是这一屏最稳的东西：结果页给选项加了「✓/✗」和颜色，但文字本身不变。
+        // 题干反而会被结果页的解析文字、广告挤得面目全非（实测同一题两次能差到 0.14），
+        // 所以同题判定以选项为主，题干只在「两个选项」这种判断题里才要求也像。
+        StringBuilder ob = new StringBuilder();
+        for (ScreenScan.Opt o : r.options) ob.append('|').append(o.text == null ? "" : o.text);
+        String optKey = Matcher.norm(ob.toString());
+        String qKey = Matcher.norm(Layout.stripDynamic(r.question == null ? "" : r.question));
+        if (!ocrVerify) {
+            if (OcrText.looksAnswered(hit.lines)) {
+                Log.i(TAG, "图片识别：这页已经是答案结果页，跳过");
+                lastOcrAt = System.currentTimeMillis() + 15000;
+                return;
+            }
+            float simOpt = OcrText.similar(optKey, lastOcrOpts);
+            float simQ = OcrText.similar(qKey, lastOcrQ);
+            boolean tiny = r.options.size() <= 2;     // 是/否、对/错：光看选项分不出来
+            Log.i(TAG, "图片识别判重 选项 " + String.format(java.util.Locale.US, "%.2f", simOpt)
+                    + " · 题干 " + String.format(java.util.Locale.US, "%.2f", simQ)
+                    + " · " + r.options.size() + " 个选项");
+            if (optKey.length() >= 2 && simOpt >= 0.85f && (!tiny || simQ >= 0.5f)) {
+                Log.i(TAG, "图片识别：同一题已经处理过，跳过本轮");
+                // 这道题的答案已经在屏幕上了，没必要每 5 秒再截一次图
+                lastOcrAt = System.currentTimeMillis() + 15000;
+                return;
+            }
+        }
+        lastOcrOpts = optKey;
+        lastOcrQ = qKey;
+
+        Log.i(TAG, "图片识别到 " + r.options.size() + " 个选项 / " + hit.ms + "ms"
+                + (useGeo ? "（几何）" : "（解析）"));
+
+        /*
+         * 本地模型可用时，先做一遍错别字校对再解题。
+         *
+         * OCR 的形近字误认（磨损→唐损、更换→更焕、围裙板→国裙板）几何校验和分辨率都救不了，
+         * 因为它们不是漏字或错位，而是把字认成了另一个字；语言模型靠上下文能判出来。
+         * 放工作线程做，避免 1~2 秒的生成卡住界面；校对不可用时原样往下走。
+         */
+        if (AnswerEngine.get().ready()) {
+            final ScreenScan.Result rr = r;
+            final java.util.List<String> optLines = new ArrayList<>();
+            for (ScreenScan.Opt o : rr.options) optLines.add(o.letter + ". " + o.text);
+            Overlay.get(this).update("校对中…", "本地模型修正识别错别字");
+            new Thread(new Runnable() {
+                public void run() {
+                    final TextFix.Result fx = TextFix.fix(rr.question, optLines);
+                    h.post(new Runnable() {
+                        public void run() {
+                            if (fx != null) {
+                                rr.question = fx.question;
+                                for (int i = 0; i < rr.options.size() && i < fx.options.size(); i++) {
+                                    String s = fx.options.get(i);
+                                    int dot = s.indexOf('.');
+                                    if (dot > 0 && dot + 1 < s.length()) {
+                                        rr.options.get(i).text = s.substring(dot + 1).trim();
+                                    }
+                                }
+                            }
+                            handle(rr, ocrVerify);
+                        }
+                    });
+                }
+            }, "textfix").start();
+            return;
+        }
+        handle(r, ocrVerify);
+    }
+
+    /**
+     * 悬浮窗「截屏」按钮：把当前画面交给视觉模型读题答题。
+     *
+     * <p>它解决 OCR 补不掉的两类错误：形近字误认（磨损→唐损）和符号误识（≤ 认成 K/公/不）。
+     * 视觉模型端到端理解图像，而且用户此刻停在题目上，画面里本来就没有广告干扰。
+     */
+    public static void visionScan() {
+        final QService s = sInst;
+        if (s == null) return;
+        if (!VisionSolver.available(s)) {
+            Overlay.get(s).update("没配视觉 Key",
+                    "设置 › 在线模型 › 给要用的那家填 Key");
+            return;
+        }
+        Overlay.get(s).setInvisible(true);
+        s.h.postDelayed(() -> OcrEngine.captureAsync(s, new OcrEngine.Callback() {
+            public void onBitmap(Bitmap bmp, String err) {
+                Overlay.get(s).setInvisible(false);
+                if (bmp == null) {
+                    Overlay.get(s).update("截图失败", err == null ? "未知原因" : err);
+                    return;
+                }
+                final Bitmap b = bmp;
+                Overlay.get(s).update("视觉读题中…", "");
+                new Thread(new Runnable() {
+                    public void run() {
+                        final VisionSolver.Result vr = VisionSolver.ask(s, b, "");
+                        try { b.recycle(); } catch (Throwable ignored) { }
+                        s.h.post(new Runnable() {
+                            public void run() { s.showVision(vr); }
+                        });
+                    }
+                }, "vision").start();
+            }
+        }), 80);
+    }
+
+    /**
+     * 打开「校准题目区域」：用户拖两条横线框住题干 + 选项，之后同一个 App 一直按这块裁剪。
+     * 比自动推断可靠 —— 屏幕就那么大，题目区位置是固定的，让人拖一次最准。
+     */
+    /** 悬浮窗点一下：暂停/恢复自动模式。返回 true = 现在是暂停状态。 */
+    public static boolean toggleAutoPause() {
+        autoPaused = !autoPaused;
+        Log.i(TAG, "自动模式" + (autoPaused ? "已暂停（开关不变，点「继续」恢复）" : "已恢复"));
+        // 暂停时把已经在倒计时的自动动作一并取消：答案出来后排队中的「点下一题」、叫醒识别
+        final QService s = sInst;
+        if (s != null && autoPaused) {
+            s.h.removeCallbacks(s.nextRun);
+            s.h.removeCallbacks(s.fire);
+        }
+        return autoPaused;
+    }
+
+    public static boolean isAutoPaused() { return autoPaused; }
+
+    /** 切换自动/手动模式时调用：暂停概念只属于自动模式，切走就清掉，免得状态残留。 */
+    public static void resetAutoPause() {
+        autoPaused = false;
+        if (sInst != null) {
+            Overlay.get(sInst).applyPauseState(false);   // 把「⏸ 已暂停」的显示也一并清掉
+        }
+    }
+
+    public static void openCropPicker() {
+        final QService s = sInst;
+        if (s == null) return;
+        String pkg = "";
+        try {
+            android.view.accessibility.AccessibilityNodeInfo n = s.getRootInActiveWindow();
+            if (n != null && n.getPackageName() != null) {
+                String p = n.getPackageName().toString();
+                // 菜单刚关、校准界面还没出来，焦点可能是自己的对话框，不能把它当成答题 App
+                if (!p.equals(s.getPackageName())) pkg = p;
+            }
+        } catch (Throwable ignored) { }
+        if (pkg.isEmpty()) pkg = s.answerPkg;
+        if (pkg.isEmpty()) pkg = s.visionPkg;
+        Overlay.get(s).setInvisible(true);
+        CropPicker.show(s, pkg, 0, 0);
+    }
+
+    private static String fmtMs2(long ms) {
+        return ms < 1000 ? ms + "ms" : String.format(java.util.Locale.US, "%.1fs", ms / 1000.0);
+    }
+
+    /** 视觉模型的结果落地：答案行 + 题目 + 可选自动点击。 */
+    private void showVision(VisionSolver.Result vr) {
+        if (vr == null) { Overlay.get(this).update("视觉答题失败", "没有返回"); return; }
+        if (vr.error != null) { Overlay.get(this).update("视觉答题失败", vr.error); return; }
+        if (vr.answer == null || vr.answer.isEmpty()) {
+            Overlay.get(this).update("拿不准", "模型没给出答案");
+            return;
+        }
+
+        String optText = "";
+        for (VisionSolver.Option o : vr.options) {
+            if (o.letter != null && o.letter.equals(vr.answer)) { optText = o.text == null ? "" : o.text; break; }
+        }
+        String line = optText.isEmpty()
+                ? ("答案 " + vr.answer)
+                : ("答案 " + vr.answer + "  " + optText);
+
+        StringBuilder meta = new StringBuilder(
+                vr.source == null || vr.source.isEmpty() ? "视觉模型" : vr.source);
+        meta.append(" · 视觉 · ").append(fmtMs2(vr.ms));
+        if (vr.why != null && !vr.why.isEmpty()) meta.append(" · ").append(vr.why);
+
+        Overlay.get(this).setLevel(0);
+        Overlay.get(this).update(line, null, meta.toString());
+        Overlay.get(this).updateQuestion(vr.question);
+        lastLetters = vr.answer;
+        lastAnswerAt = System.currentTimeMillis();
+        Record.add(this, "vision:" + vr.question, vr.question, vr.answer, "视觉模型",
+                Math.round(95 * 1f), vr.ms);
+        vibrate();
+    }
+
+    /** 长按菜单「读屏诊断」：原地抓一次，显示结论并导出节点供 adb pull。 */
+    public static void dumpNow() {
+        final QService s = sInst;
+        if (s == null) return;
+        s.h.post(new Runnable() {
+            public void run() {
+                try {
+                    ScreenScan.Capture cap = ScreenScan.capture(s);
+                    Diag d = diagnose();
+                    DiagDump.write(s, cap, d.reason);
+                    Overlay.get(s).update(d.reason,
+                            "读到 " + d.texts.size() + " 段文字 · 认出 " + d.options + " 个选项",
+                            "节点快照 nodesnap.txt 已更新");
+                } catch (Throwable t) {
+                    Overlay.get(s).update("诊断失败", String.valueOf(t));
+                }
             }
         });
     }
@@ -233,6 +812,8 @@ public class QService extends AccessibilityService {
         // 手动复核标记只对这一次扫描有效，先取走再清零（避免扫描失败时留到下一题）
         final boolean verify = verifyBank;
         verifyBank = false;
+        // 悬浮窗点一下暂停的自动模式：自动题不跑；手动点「识别」（verify）仍然作答
+        if (autoPaused && !verify) return;
 
         boolean cloudOk = Prefs.cloudOn(this) && Prefs.cloudReady(this, Prefs.provider(this));
         boolean localOk = Prefs.localOn(this) && AnswerEngine.get().ready();
@@ -249,13 +830,40 @@ public class QService extends AccessibilityService {
             r = ScreenScan.scan(this);
         } catch (Throwable t) {
             Log.e(TAG, "扫描失败", t);
+            fail("扫描异常", String.valueOf(t));
             return;
         }
-        if (r == null || r.options.size() < 2) return;
-        if (skipPkg(r.pkg)) return;
+        Log.i(TAG, "读屏 pkg=" + (r == null ? "null" : r.pkg)
+                + " 文字=" + (r == null ? 0 : r.texts.size())
+                + " 选项=" + (r == null ? 0 : r.options.size()));
+        if (r == null || r.options.size() < 2) {
+            int n = r == null ? 0 : r.texts.size();
+            // 默认路线：截图直接交给视觉模型读题答题。
+            // OCR 退成兜底 —— 只在没配视觉模型时才用。
+            if (tryVision(verify, r)) return;
+            if (tryOcr(verify, r)) return;
+            if (n == 0) {
+                fail("读屏没拿到内容", "点「识别」用看图答题");
+            } else {
+                fail("没认出选项", "读到 " + n + " 段文字，至少需要 2 个 A/B/C 选项");
+            }
+            return;
+        }
+        handle(r, verify);
+    }
+
+    /**
+     * 真正的解题流程：手里已经有题干和选项。
+     * 读屏拿到的和图片识别拿到的都从这里往下走，所以题库、记忆库、路由、投票全都照常生效。
+     */
+    private void handle(ScreenScan.Result r, boolean verify) {
+        if (skipPkg(r.pkg)) return;   // 切到系统界面或本 App：正常场景，不打扰
 
         final String q = Layout.stripDynamic(r.question == null ? "" : r.question);
-        if (q.length() < 4) return;
+        if (q.length() < 4) {
+            fail("题干拼不出", "选项已认出，但题干为空或不足 4 字");
+            return;
+        }
 
         // 同题判重：题干和选项都没变，说明还是这道题，答案已经在屏幕上，绝不重算
         final String sig = signature(r, q);
@@ -265,7 +873,9 @@ public class QService extends AccessibilityService {
         // CONTENT_CHANGED 事件，不拦一下就会出现"刚显示答案立刻又开始思考"
         if (System.currentTimeMillis() - lastAnswerAt < 1200) {
             h.removeCallbacks(fire);
-            h.postDelayed(fire, 600);
+            if (Prefs.autoAnswer(this)) {
+                h.postDelayed(fire, 600);
+            }
             return;
         }
         lastSig = sig;
@@ -282,7 +892,10 @@ public class QService extends AccessibilityService {
             letters.add(o.letter);
             lines.add(o.letter + ". " + o.text);
         }
-        if (letters.size() < 2) return;
+        if (letters.size() < 2) {
+            fail("选项不可用", "解析出的选项字母少于 2 个");
+            return;
+        }
 
         final String[] arr = letters.toArray(new String[0]);
         // 屏幕选项：字母 → 原文，按屏幕顺序。记忆库靠它把「旧字母」翻译成「这次的字母」。
@@ -377,7 +990,7 @@ public class QService extends AccessibilityService {
         if (bankEntry != null && bankEntry.hasConflict()) {
             Overlay.get(this).update("复核中…", "记忆库有分歧，重新问一遍模型");
         } else if (bankEntry != null && !bankEntry.verified) {
-            Overlay.get(this).update("复核中…", "这道题以前答过，再核一遍才敢用");
+            Overlay.get(this).update("复核中…", "这道题还没确认过，本次仍问模型");
         } else if (verify) {
             Overlay.get(this).update("复核中…", "手动识别 · 重新推理");
         } else {
@@ -456,20 +1069,37 @@ public class QService extends AccessibilityService {
         String letters = res.letters;
         String other = res.altLetters;
         String otherSrc = res.altSource;
-        // 两路答案不一致 → 红色警告，且不自动点（点错比不点更亏）
-        boolean conflict = res.altLetters != null && !res.altLetters.isEmpty();
+        boolean hasAlt = res.altLetters != null && !res.altLetters.isEmpty();
+        // 只有分歧严重到「平票 / 三方各说一套」（warnLevel=2）才算真冲突：红框 + 不自动点。
+        // 2:1 多数时少数派的答案照样显示出来，但多数票照常点 ——
+        // 否则「有共识」也会被卡住不点，等于白投。
+        boolean conflict = hasAlt && res.warnLevel >= 2;
         String conflictNote = null;
 
-        // ---- 题库仲裁：模型答案与库里的不一样时，只记录、不改写 ----
+        // ---- 题库仲裁：模型答案与库里的不一样时 ----
+        // 只有**用户确认过**的条目才可以反过来改主答案；
+        // 待确认的候选（自己答过但没人审核）永远不能顶掉本次模型的答案，
+        // 否则等于绕过审核直接引用，跟用户定下的规则冲突。
+        boolean bankTrusted;
+        Record.Bank curBank = Record.bankGet(this, sig);
+        bankTrusted = curBank != null && curBank.verified && !curBank.hasConflict();
         if (!fromBank) {
             Record.Hit arb = Record.bankAuto(this, sig, q, letters, lastScreenOpts, res.source, pct);
             if (arb != null) {
                 if (arb.conflict) {
-                    letters = arb.letters;            // 主答案仍以题库为准
-                    other = arb.other;
-                    otherSrc = arb.otherSrc;
-                    conflict = true;
-                    conflictNote = "这次模型答 " + arb.other + "，和记忆库不一致，没敢用";
+                    if (bankTrusted) {
+                        letters = arb.letters;            // 已确认：主答案以记忆库为准
+                        other = arb.other;
+                        otherSrc = arb.otherSrc;
+                        conflict = true;
+                        conflictNote = "这次模型答 " + arb.other + "，和记忆库不一致，没敢用";
+                    } else {
+                        // 未确认的候选：以本次模型答案为准，库里那条只摆出来对照
+                        other = arb.letters;
+                        otherSrc = "记忆库（待确认）";
+                        hasAlt = true;                  // 让它跟着显示在下面
+                        conflictNote = "记忆库候选 " + arb.letters + " 还没确认过，以本次答案为准";
+                    }
                     Record.markConflict();
                 } else {
                     letters = arb.letters;
@@ -488,12 +1118,16 @@ public class QService extends AccessibilityService {
         meta.append(" · ").append(fmtMs(res.coreMs > 0 ? res.coreMs : res.ms));
         if (pct > 0 && pct < 100) meta.append(" · 把握 ").append(pct).append("%");
         if (conflict) {
+            // answeredBy 已经是「投票分歧（N 家各不相同）」，再补一句「两路不一致」是重复。
+            // 只有题库仲裁那种具体情况（conflictNote 有内容）才追加。
             if (conflictNote != null) meta.append("\n").append(conflictNote);
-            else meta.append("\n").append(otherSrc == null ? "两个来源" : otherSrc)
-                    .append("给了不同答案，没敢用");
+        } else {
+            // 未确认的记忆库候选也走这条：先说明它没被采用，再报「点不点」
+            if (conflictNote != null) meta.append("\n").append(conflictNote);
+            if (lowConf) meta.append(" · 没把握，没敢点");
+            else if (autoPaused) meta.append(" · 已暂停，没替你点");
+            else if (Prefs.autoClick(this)) meta.append(" · 已自动点");
         }
-        else if (lowConf) meta.append(" · 没把握，没敢点");
-        else if (Prefs.autoClick(this)) meta.append(" · 已自动点");
 
         StringBuilder why = new StringBuilder();
         if (hurryMode) why.append("抢答模式（检测到计时器）");
@@ -507,16 +1141,54 @@ public class QService extends AccessibilityService {
         }
         if (why.length() > 0) meta.append("\n").append(why);
 
-        String answerLine = "答案 " + letters;
-        String detail = answerText(r, letters);
+        // 单选：把选项内容并进答案那一行（「答案 B  6个月」）。
+        // 以前是「答案 B」下面再单独一行「B. 6个月」，字母重复，白占一行高度。
+        String optText = answerText(r, letters);
+        String answerLine;
+        String detail = null;
+        StringBuilder det = new StringBuilder();
+
+        if (res.disputed && res.voteMap != null && !res.voteMap.isEmpty()) {
+            // 真分歧：没有「答案」可给。大字直接写「有分歧」，下面把每一家的名字和
+            // 它选的选项都摆出来，让用户自己判断 —— 不替用户挑一个。
+            answerLine = "有分歧";
+            for (java.util.Map.Entry<String, String> e : res.voteMap.entrySet()) {
+                String L = e.getKey();
+                String t = answerText(r, L);
+                if (t != null) {
+                    t = t.replace('\n', ' ')
+                         .replaceFirst("^[A-Ea-e][.、．:：]\\s*", "").trim();
+                }
+                if (det.length() > 0) det.append('\n');
+                det.append(e.getValue()).append('：').append(L);
+                if (t != null && !t.isEmpty()) det.append(' ').append(shortText(t));
+            }
+        } else if (letters.length() == 1 && optText != null && !optText.isEmpty()) {
+            String t = optText.replaceFirst("^[A-Ea-e][.、．:：]\\s*", "").trim();
+            answerLine = t.isEmpty() ? ("答案 " + letters) : ("答案 " + letters + "  " + t);
+        } else {
+            answerLine = "答案 " + letters;
+            detail = optText;
+        }
+
+        if (detail != null && !detail.isEmpty()) det.append(detail);
         if (contrastText != null && !contrastText.isEmpty()) {
-            detail = (detail == null ? "" : detail) + "\n" + contrastText;
+            if (det.length() > 0) det.append('\n');
+            det.append(contrastText);
         }
-        if (conflict && other != null && !other.isEmpty()) {
-            // 把另一路的答案和内容一起摆出来，方便人工裁决
-            detail = detail + "\n" + (otherSrc == null ? "" : otherSrc + "：") + other
-                    + " " + shortText(answerText(r, other));
+        if (!res.disputed && hasAlt && other != null && !other.isEmpty()) {
+            // 另一路的答案连同内容一起摆出来，方便人工裁决（2:1 多数时也显示）。
+            // 真分歧时上面已经把每一家都列了，这里不能再追加一遍。
+            if (det.length() > 0) det.append('\n');
+            // 「投票 · DeepSeek V4.1-Flash」太长，去掉前缀只留模型名
+            String src = otherSrc == null ? "另一路" : otherSrc.replaceFirst("^投票 · ", "");
+            det.append(src).append('：').append(other);
+            // answerText 自带字母（「B. 4mm」），不去掉会显示成「B B. 4mm」
+            String ot = answerText(r, other);
+            if (ot != null) ot = ot.replaceFirst("^[A-Ea-e][.、．:：]\\s*", "").trim();
+            if (ot != null && !ot.isEmpty()) det.append(' ').append(shortText(ot));
         }
+        detail = det.length() == 0 ? null : det.toString();
         // 外框颜色取三者最高：分歧=红，低置信/只剩一家/降级=黄。
         // 「只剩一家」以前只在 meta 小字里，扫一眼看不出来，现在边框就变黄。
         int level = conflict ? 2 : (lowConf ? 1 : 0);
@@ -547,6 +1219,10 @@ public class QService extends AccessibilityService {
 
         if (!Prefs.autoClick(this)) return;
         if (conflict) return;                          // 两路打架时不点
+        if (autoPaused) {                              // 暂停中：答案只显示，不替用户点
+            Log.i(TAG, "自动模式已暂停，答案只显示不点击");
+            return;
+        }
         // 置信低于阈值就不点。自选题库没定位到屏幕时 conf=0.4，会在这里被挡住
         if (pct < Prefs.thresholdPct(this)) return;
         final String toClick = letters;
@@ -642,8 +1318,12 @@ public class QService extends AccessibilityService {
                 public void run() {
                     for (ScreenScan.Opt o : r.options) {
                         if (want.equals(o.letter)) {
-                            boolean ok = ScreenScan.click(QService.this, o.node, human);
-                            Log.i(TAG, "点击 " + want + " -> " + ok + (human ? "（拟人）" : ""));
+                            // 图片识别没有节点，只能按识别出来的矩形中心发手势
+                            boolean ok = o.node != null
+                                    ? ScreenScan.click(QService.this, o.node, human)
+                                    : ScreenScan.tapAt(QService.this, o.box, human);
+                            Log.i(TAG, "点击 " + want + " -> " + ok + (human ? "（拟人）" : "")
+                                    + (o.node == null ? "（图片识别·坐标）" : ""));
                             break;
                         }
                     }

@@ -4,6 +4,8 @@
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows"
     android:canRetrieveWindowContent="true"
+    android:canTakeScreenshot="true"
+    android:canPerformGestures="true"
     android:description="@string/acc_desc"
     android:notificationTimeout="100"
     android:settingsActivity="com.dsh.aianswer.MainActivity" />

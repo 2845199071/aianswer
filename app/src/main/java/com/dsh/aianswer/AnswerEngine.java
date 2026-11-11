@@ -58,6 +58,13 @@ public final class AnswerEngine {
         public int warnLevel = 0;
         public String altLetters = null;  // 另一路给出的不同答案（null 表示没有/一致）
         public String altSource  = null;
+        /**
+         * 真分歧（平票 / 各家各不相同）：此时没有「答案」可给，
+         * 界面应显示「有分歧」并把每一家的答案都列出来，让用户自己判断，绝不自动点。
+         */
+        public boolean disputed = false;
+        /** disputed 时有效：答案字母 → 投它的厂商名，按投票顺序。 */
+        public java.util.Map<String, String> voteMap = null;
     }
 
     public interface Cb { void onResult(Result r); }
@@ -73,6 +80,15 @@ public final class AnswerEngine {
     private AnswerEngine() {}
 
     public boolean ready()   { return llama.isReady(); }
+
+    /**
+     * 用本地模型生成一段文本（目前给错别字校对用）。
+     * 阻塞调用，调用方必须在工作线程。
+     */
+    public String genLocal(String prompt, int maxTok) {
+        if (!llama.isReady()) return null;
+        return llama.gen(prompt, maxTok);
+    }
     public boolean isBusy()  { return busy; }
     public String  soError() { return Llama.loadError(); }
 
@@ -294,12 +310,20 @@ public final class AnswerEngine {
         r.source = "投票";
         // 先按健康度排序再截断：谁最近老过载，谁就排在后面，
         // 不然名额被它占着，投出来的「多数」永远是同一家说了算。
-        List<CloudSolver.Provider> ps = CloudSolver.orderByHealth(Prefs.cloudReadyList(ctx));
+        // 只问用户在设置里勾选的那些厂商（没勾就退化为全部已配置）
+        java.util.Set<String> picked = Prefs.voteProviders(ctx);
+        java.util.List<CloudSolver.Provider> only = new ArrayList<>();
+        for (CloudSolver.Provider cp : Prefs.cloudReadyList(ctx)) {
+            if (picked.isEmpty() || picked.contains(cp.id)) only.add(cp);
+        }
+        List<CloudSolver.Provider> ps = CloudSolver.orderByHealth(only);
         int maxProv = hurry ? 2 : 3;
         if (ps.size() > maxProv) ps = new ArrayList<>(ps.subList(0, maxProv));
 
         Map<String, Integer> tally = new LinkedHashMap<>();
         Map<String, String> who = new LinkedHashMap<>();
+        // 每个答案字母是哪家投的：平票时要靠它选可信度更高的那一路，而不是取先到的
+        Map<String, CloudSolver.Provider> prov = new LinkedHashMap<>();
         List<String> fails = new ArrayList<>();
         int ok = 0;
         // 总预算：串行 3 家最坏 13 秒，考试倒计时等不起。超过预算就不再问剩下的，
@@ -326,6 +350,7 @@ public final class AnswerEngine {
             String label = p.label.replaceAll("（.*$", "");
             String prev = who.get(o.letters);
             who.put(o.letters, prev == null ? label : prev + "·" + label);
+            if (!prov.containsKey(o.letters)) prov.put(o.letters, p);
         }
 
         if (tally.isEmpty()) {
@@ -364,19 +389,44 @@ public final class AnswerEngine {
             r.voteNote = failNote;
             r.source = "投票 " + bestN + "/" + ok;
         } else {
-            // 三方各说一套 / 平票：标红，QService 不会自动点击
+            /*
+             * 平票 / 三方各说一套：标红，QService 不会自动点击。
+             *
+             * 平票时**绝不能取先到的那一家**。实测两家各投一票：
+             * 先到的给了 A（错），后到的 DeepSeek 给了 B（对），
+             * 结果悬浮窗上写「答案 A」——用户看到的就是「为什么答案会叫选 A」。
+             * 这里改成按模型可信度挑主答案：付费 > 免费，同等再比成功率。
+             */
+            String pick = best;
+            if (best != null && second != null) {
+                CloudSolver.Provider pb = prov.get(best), p2 = prov.get(second);
+                if (pb != null && p2 != null) {
+                    boolean secondBetter = (!p2.free && pb.free)
+                            || (p2.free == pb.free
+                                && CloudSolver.successRate(p2.id) > CloudSolver.successRate(pb.id));
+                    if (secondBetter) pick = second;
+                }
+            }
+            r.letters = pick;
             r.conf = 0.45f;
             r.warnLevel = 2;
+            r.disputed = true;          // 界面显示「有分歧」，不再假装给一个答案
+            r.voteMap = who;            // 每家给了什么，全部摆出来
             r.answeredBy = "投票分歧（" + ok + " 家各不相同）";
             r.voteNote = failNote;
             r.source = "投票 分歧";
-            if (second != null) {
-                r.altLetters = second;
-                r.altSource = "投票 · " + who.get(second);
+            String otherSide = pick.equals(best) ? second : best;
+            if (otherSide != null) {
+                r.altLetters = otherSide;
+                r.altSource = "投票 · " + who.get(otherSide);
             }
             return r;
         }
         if (second != null && secondN > 0) {
+            // 少数派的答案也要摆出来：用户有权知道另一家给的是什么。
+            // 注意 warnLevel 保持 0 —— 2:1 多数仍然算「有共识」，照常自动点；
+            // 只有平票 / 三方各说一套才会走上面的 warnLevel=2（红框且不点）。
+            r.altLetters = second;
             r.altSource = "投票 · " + who.get(second);
         }
         return r;

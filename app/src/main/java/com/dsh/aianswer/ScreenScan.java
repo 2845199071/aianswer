@@ -15,6 +15,8 @@ public class ScreenScan {
         public String letter;
         public String text;
         public AccessibilityNodeInfo node;
+        /** 图片识别模式下没有节点，只有视觉模型给的矩形 {l,t,r,b}，点击靠它。 */
+        public int[] box;
     }
 
     public static class Result {
@@ -46,10 +48,22 @@ public class ScreenScan {
      * 这里优先从 getWindows() 里挑「不是本应用、且是应用窗口」的那个。
      */
     private static AccessibilityNodeInfo pickRoot(AccessibilityService svc) {
+        // ① 优先用系统给的「焦点窗口」根节点。
+        // 先遍历 getWindows() 找 isActive 有个坑：多窗口时（微信小程序 + 后台 LauncherUI）
+        // 可能先拿到后台那个，collect 全是不可见节点，最后读出 0 段文字。
+        try {
+            AccessibilityNodeInfo focus = svc.getRootInActiveWindow();
+            if (focus != null) {
+                CharSequence fp = focus.getPackageName();
+                String fpkg = fp == null ? "" : fp.toString();
+                if (!fpkg.equals(svc.getPackageName())) return focus;
+            }
+        } catch (Throwable ignored) { }
+
+        // ② 回退：遍历窗口，挑第一个「不是自己、且有内容」的
         try {
             java.util.List<android.view.accessibility.AccessibilityWindowInfo> ws = svc.getWindows();
             if (ws != null) {
-                AccessibilityNodeInfo active = null;
                 AccessibilityNodeInfo any = null;
                 for (android.view.accessibility.AccessibilityWindowInfo w : ws) {
                     if (w == null) continue;
@@ -62,19 +76,12 @@ public class ScreenScan {
                     String pkg = p == null ? "" : p.toString();
                     if (pkg.equals(svc.getPackageName())) continue;   // 跳过自己
                     if (any == null) any = root;
-                    if (w.isActive()) { active = root; break; }
+                    if (w.isActive()) return root;
                 }
-                if (active != null) return active;
                 if (any != null) return any;
             }
         } catch (Throwable ignored) { }
-        AccessibilityNodeInfo root = svc.getRootInActiveWindow();
-        // 兜底：如果活动窗口就是自己（悬浮面板），宁可返回空，也不要把面板文字当题目
-        if (root != null) {
-            CharSequence p = root.getPackageName();
-            if (p != null && p.toString().equals(svc.getPackageName())) return null;
-        }
-        return root;
+        return null;
     }
 
     public static Capture capture(AccessibilityService svc) {
@@ -247,5 +254,32 @@ public class ScreenScan {
             return svc.dispatchGesture(gb.build(), null, null);
         }
         return false;
+    }
+
+    /**
+     * 按矩形中心点一下（图片识别专用）。
+     * 小程序 / Canvas 页面的选项不是可点击节点，只能按坐标发手势。
+     *
+     * @param box {l,t,r,b} 屏幕像素坐标，来自视觉模型给的相对矩形
+     */
+    public static boolean tapAt(AccessibilityService svc, int[] box, boolean human) {
+        if (box == null || box.length != 4 || Build.VERSION.SDK_INT < 24) return false;
+        int cx = (box[0] + box[2]) / 2;
+        int cy = (box[1] + box[3]) / 2;
+        long dur = 60;
+        if (human) {
+            java.util.Random rnd = new java.util.Random();
+            float density = svc.getResources().getDisplayMetrics().density;
+            cx += (int) ((rnd.nextInt(7) - 3) * density);
+            cy += (int) ((rnd.nextInt(7) - 3) * density);
+            dur = 90 + rnd.nextInt(90);
+        }
+        if (cx <= 0 || cy <= 0) return false;
+        android.graphics.Path path = new android.graphics.Path();
+        path.moveTo(cx, cy);
+        android.accessibilityservice.GestureDescription.Builder gb =
+                new android.accessibilityservice.GestureDescription.Builder();
+        gb.addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, dur));
+        return svc.dispatchGesture(gb.build(), null, null);
     }
 }

@@ -86,6 +86,40 @@
         <item name="android:textSize">11sp</item>
     </style>
 
+    <!--
+      设置项容器：浅灰圆角块 + 上下留白。
+      设置弹窗里原来所有开关平铺，项与项之间没有边界，扫读容易串行。
+    -->
+    <style name="SetItem">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:background">@drawable/set_item</item>
+        <item name="android:paddingStart">14dp</item>
+        <item name="android:paddingEnd">14dp</item>
+        <item name="android:paddingTop">2dp</item>
+        <item name="android:paddingBottom">10dp</item>
+        <item name="android:layout_marginTop">8dp</item>
+    </style>
+
+    <!-- 设置项里的可点入口（如「参与投票的模型」），做成明显的浅蓝小按钮 -->
+    <style name="SetPick">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">40dp</item>
+        <item name="android:layout_marginTop">6dp</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">12dp</item>
+        <item name="android:paddingTop">8dp</item>
+        <item name="android:paddingBottom">8dp</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:background">@drawable/set_pick</item>
+        <item name="android:textColor">@color/primary_deep</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+
     <!-- 弹窗分割线 -->
     <style name="DialogDivider">
         <item name="android:layout_width">match_parent</item>

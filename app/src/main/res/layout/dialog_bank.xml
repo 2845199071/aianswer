@@ -75,6 +75,11 @@
             android:text="全部" />
 
         <TextView
+            android:id="@+id/segPending"
+            style="@style/SegmentItem"
+            android:text="待确认" />
+
+        <TextView
             android:id="@+id/segConflict"
             style="@style/SegmentItem"
             android:text="有分歧" />
@@ -215,6 +220,13 @@
             android:id="@+id/btnBankAll"
             style="@style/GhostButton"
             android:text="全选本页" />
+
+        <TextView
+            android:id="@+id/btnBankConfirm"
+            style="@style/GhostButton"
+            android:layout_marginStart="8dp"
+            android:text="确认所选"
+            android:textColor="@color/primary_deep" />
 
         <TextView
             android:id="@+id/btnBankDelete"

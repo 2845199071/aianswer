@@ -54,20 +54,20 @@ public class MainActivity extends Activity {
     private Switch swHuman, swAutoNext, swVote, swRoute, swExplain;
     private TextView tvAutoNextHint;
     private Switch swSelfFirst;
-    private TextView tvVoteHint, tvRouteHint, tvThHint;
+    private TextView tvVoteHint, tvVotePick, tvRouteHint, tvThHint;
 
     // ---- 题库中心 ----
     private LinearLayout boxBank;
     private LinearLayout boxConflictList;
     private LinearLayout boxLetters;
     private TextView tvBankEmpty, tvBankCount, tvBankHint;
-    private TextView segAll, segConflict, segWrong;
-    private int bankFilter = 0;                 // 0 全部 / 1 有分歧 / 2 错题
+    private TextView segAll, segPending, segConflict, segWrong;
+    private int bankFilter = 0;                 // 0 全部 / 1 待确认 / 2 有分歧 / 3 错题
     // ---- 题库批量删除 ----
     private boolean bankSelectMode = false;
     private final java.util.Set<String> selectedKeys = new java.util.LinkedHashSet<>();  // 用 key 标识，跨筛选累计；必须去重
     private final java.util.Map<String, View> bankRowViews = new java.util.HashMap<>();
-    private TextView btnBankSelect, btnBankAll, btnBankDelete;
+    private TextView btnBankSelect, btnBankAll, btnBankConfirm, btnBankDelete;
     private View boxBankAction;
     // ---- 自选题库 ----
     private static final int REQ_IMPORT = 1001;
@@ -193,6 +193,7 @@ public class MainActivity extends Activity {
             public void onCheckedChanged(android.widget.CompoundButton v, boolean on) {
                 if (binding) return;
                 Prefs.setAutoAnswer(MainActivity.this, on);
+                QService.resetAutoPause();     // 暂停只属于自动模式，切模式时清掉
                 QService.refreshOverlay();
             }
         });
@@ -1486,6 +1487,12 @@ public class MainActivity extends Activity {
         swExplain = v.findViewById(R.id.swExplain);
         swSelfFirst = v.findViewById(R.id.swSelfFirst);
         tvVoteHint= v.findViewById(R.id.tvVoteHint);
+        tvVotePick= v.findViewById(R.id.tvVotePick);
+        if (tvVotePick != null) {
+            tvVotePick.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View x) { showVotePicker(); }
+            });
+        }
         tvRouteHint = v.findViewById(R.id.tvRouteHint);
         sbTh      = v.findViewById(R.id.sbTh);
         tvTh      = v.findViewById(R.id.tvTh);
@@ -1612,14 +1619,18 @@ public class MainActivity extends Activity {
                             "需要 2 个以上已填 Key 的在线模型", Toast.LENGTH_LONG).show();
                     return;
                 }
-                Prefs.setVote(MainActivity.this, on);
                 if (on) {
+                    // 打开投票：先默认全选已配置的，紧接着弹二级窗让用户挑哪几家参与
+                    Prefs.setVote(MainActivity.this, true);
                     // 互斥：投票已经是对拍了，再叠复核会变成 3~4 次调用
                     Prefs.setDualCheck(MainActivity.this, false);
                     binding = true; if (swDual != null) swDual.setChecked(false); binding = false;
-                    Toast.makeText(MainActivity.this, "已开启投票，复核和题型路由都不再生效", Toast.LENGTH_SHORT).show();
+                    applySettingGates();
+                    showVotePicker();
+                } else {
+                    Prefs.setVote(MainActivity.this, false);
+                    applySettingGates();
                 }
-                applySettingGates();
             }
         });
         swRoute.setOnCheckedChangeListener(new android.widget.CompoundButton.OnCheckedChangeListener() {
@@ -1700,22 +1711,91 @@ public class MainActivity extends Activity {
             swVote.setEnabled(can);
             swVote.setAlpha(can ? 1f : 0.45f);
             if (!can && Prefs.vote(this)) {
-                Prefs.setVote(this, false);
-                binding = true; swVote.setChecked(false); binding = false;
+                Prefs.setVote(this, false);       // 不足两家：强制关闭，别留个假的「已开」
             }
+            boolean on = Prefs.vote(this);
+            binding = true; swVote.setChecked(on); binding = false;
+
+            int picked = Prefs.voteProviders(this).size();
             if (tvVoteHint != null) {
                 if (can) {
                     tvVoteHint.setTextColor(clr(R.color.text_hint));
-                    tvVoteHint.setText("已配置 " + n + " 个在线模型 · 最多问 3 家取多数，每题消耗 "
-                            + Math.min(n, 3) + " 次；只对路由判为在线的题生效。"
-                            + "按最近成功率排序，老过载的自动靠后");
+                    tvVoteHint.setText(on
+                            ? "已选 " + picked + " 家参与 · 每题最多问 3 家取多数，消耗 "
+                              + Math.min(picked, 3) + " 次；各家答案不同时不自动点"
+                            : "已配置 " + n + " 个在线模型 · 打开后可挑其中几家参与投票");
                 } else {
                     tvVoteHint.setTextColor(clr(R.color.warning));
                     tvVoteHint.setText("需配置 2 个以上在线大模型（当前 " + n + " 个）· 去「在线模型」里多填一家 Key");
                 }
             }
+            if (tvVotePick != null) {
+                tvVotePick.setVisibility(can ? View.VISIBLE : View.GONE);
+                tvVotePick.setText(votePickText());
+            }
         }
         applyRouteGate();
+    }
+
+    /** 二级弹窗：勾选哪几家参与投票。一个都不选 = 关闭投票。 */
+    private void showVotePicker() {
+        final java.util.List<CloudSolver.Provider> ready = Prefs.cloudReadyList(this);
+        if (ready.size() < 2) {
+            Toast.makeText(this, "至少要有 2 个填过 Key 的在线模型才能投票", Toast.LENGTH_LONG).show();
+            return;
+        }
+        java.util.Set<String> sel = Prefs.voteProviders(this);
+        if (sel.isEmpty()) {
+            for (CloudSolver.Provider p : ready) sel.add(p.id);   // 没选过：默认全选
+        }
+
+        final boolean[] checked = new boolean[ready.size()];
+        final String[] labels = new String[ready.size()];
+        for (int i = 0; i < ready.size(); i++) {
+            labels[i] = ready.get(i).label;
+            checked[i] = sel.contains(ready.get(i).id);
+        }
+
+        new AlertDialog.Builder(this, R.style.WhiteDialog)
+                .setTitle("哪几家参与投票")
+                .setMultiChoiceItems(labels, checked,
+                        new DialogInterface.OnMultiChoiceClickListener() {
+                            public void onClick(DialogInterface dd, int which, boolean isChecked) {
+                                checked[which] = isChecked;
+                            }
+                        })
+                .setPositiveButton("保存", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dd, int w) {
+                        java.util.LinkedHashSet<String> picked = new java.util.LinkedHashSet<>();
+                        for (int i = 0; i < ready.size(); i++) {
+                            if (checked[i]) picked.add(ready.get(i).id);
+                        }
+                        Prefs.setVoteProviders(MainActivity.this, picked);
+                        applySettingGates();
+                        String msg;
+                        if (picked.isEmpty())        msg = "一个都没选，投票已关闭";
+                        else if (picked.size() == 1) msg = "只选了 1 家，等于单模型，不会投票";
+                        else                         msg = "已选 " + picked.size() + " 家参与投票";
+                        Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    /** 设置页那行可点的小字：「参与投票的模型：DeepSeek、智谱 · 点这里调整 ›」。 */
+    private String votePickText() {
+        java.util.Set<String> sel = Prefs.voteProviders(this);
+        if (sel.isEmpty()) return "选择参与投票的模型 ›";
+        StringBuilder sb = new StringBuilder("参与投票：");
+        boolean first = true;
+        for (CloudSolver.Provider p : Prefs.cloudReadyList(this)) {
+            if (!sel.contains(p.id)) continue;
+            if (!first) sb.append('、');
+            sb.append(p.label.replaceAll("（.*$", ""));
+            first = false;
+        }
+        return sb.append(" · 点此调整 ›").toString();
     }
 
     /**
@@ -1835,10 +1915,12 @@ public class MainActivity extends Activity {
         tvBankCount = v.findViewById(R.id.tvBankCount);
         tvBankHint  = v.findViewById(R.id.tvBankHint);
         segAll      = v.findViewById(R.id.segAll);
+        segPending  = v.findViewById(R.id.segPending);
         segConflict = v.findViewById(R.id.segConflict);
         segWrong    = v.findViewById(R.id.segWrong);
         btnBankSelect = v.findViewById(R.id.btnBankSelect);
         btnBankAll    = v.findViewById(R.id.btnBankAll);
+        btnBankConfirm = v.findViewById(R.id.btnBankConfirm);
         btnBankDelete = v.findViewById(R.id.btnBankDelete);
         boxBankAction = v.findViewById(R.id.boxBankAction);
         tvSelfEntryCount = v.findViewById(R.id.tvSelfEntryCount);
@@ -1872,14 +1954,21 @@ public class MainActivity extends Activity {
             public void onClick(View x) { confirmBatchDelete(); }
         });
 
+        btnBankConfirm.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View x) { confirmBatchVerify(); }
+        });
+
         segAll.setOnClickListener(new View.OnClickListener() {
             public void onClick(View x) { bankFilter = 0; renderBank(); }
         });
-        segConflict.setOnClickListener(new View.OnClickListener() {
+        segPending.setOnClickListener(new View.OnClickListener() {
             public void onClick(View x) { bankFilter = 1; renderBank(); }
         });
-        segWrong.setOnClickListener(new View.OnClickListener() {
+        segConflict.setOnClickListener(new View.OnClickListener() {
             public void onClick(View x) { bankFilter = 2; renderBank(); }
+        });
+        segWrong.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View x) { bankFilter = 3; renderBank(); }
         });
 
         final AlertDialog d = new AlertDialog.Builder(this, R.style.WhiteDialog).setView(v).create();
@@ -1889,8 +1978,8 @@ public class MainActivity extends Activity {
         d.setOnDismissListener(new DialogInterface.OnDismissListener() {
             public void onDismiss(DialogInterface x) {
                 boxBank = null; tvBankEmpty = null; tvBankCount = null; tvBankHint = null;
-                segAll = null; segConflict = null; segWrong = null;
-                btnBankSelect = null; btnBankAll = null; btnBankDelete = null;
+                segAll = null; segPending = null; segConflict = null; segWrong = null;
+                btnBankSelect = null; btnBankAll = null; btnBankConfirm = null; btnBankDelete = null;
                 boxBankAction = null; tvSelfEntryCount = null;
                 tvUndoBar = null;
                 ui.removeCallbacks(clearUndo);
@@ -1915,8 +2004,9 @@ public class MainActivity extends Activity {
     private void renderBank() {
         if (boxBank == null) return;
         paintSeg(segAll, bankFilter == 0);
-        paintSeg(segConflict, bankFilter == 1);
-        paintSeg(segWrong, bankFilter == 2);
+        paintSeg(segPending, bankFilter == 1);
+        paintSeg(segConflict, bankFilter == 2);
+        paintSeg(segWrong, bankFilter == 3);
 
         List<Record.Bank> all = Record.bankList(this);
         int conflict = 0, wrong = 0;
@@ -1938,8 +2028,9 @@ public class MainActivity extends Activity {
         bankRowViews.clear();
         int shown = 0;
         for (Record.Bank b : all) {
-            if (bankFilter == 1 && !b.hasConflict()) continue;
-            if (bankFilter == 2 && !b.wrong) continue;
+            if (bankFilter == 1 && (b.verified || b.hasConflict())) continue;  // 待确认：还没人审核过
+            if (bankFilter == 2 && !b.hasConflict()) continue;
+            if (bankFilter == 3 && !b.wrong) continue;
             if (shown >= 300) break;        // 规模兜底，几百条够翻
             View row = bankRow(b);
             boxBank.addView(row);
@@ -1953,9 +2044,9 @@ public class MainActivity extends Activity {
             tvBankHint.setText(bankSelectMode
                     ? "点条目多选，可跨筛选累计；「全选本页」只选当前列表已显示的题"
                     : (pending > 0
-                        ? "答过的题会先标「待确认」：再答对一次或点「确认可用」后才直接给答案（现在有 "
+                        ? "答过的题一律先标「待确认」：必须在题库里点「确认可用」（可多选批量）后才直接给答案（现在有 "
                             + pending + " 条待确认）"
-                        : "答过的题会自动记住。改过的答案是「金标准」，模型以后不会再覆盖它。"));
+                        : "答过的题都还没确认。改过的答案是「金标准」，模型以后不会再覆盖它。"));
             tvBankHint.setTextColor(clr(bankSelectMode ? R.color.primary_deep : R.color.text_hint));
         }
         if (btnBankSelect != null) btnBankSelect.setText(bankSelectMode ? "取消" : "选择");
@@ -1966,8 +2057,9 @@ public class MainActivity extends Activity {
             if (shown == 0) {
                 tvBankEmpty.setText(bankFilter == 0
                         ? "这里还是空的\n刷几道题后，答过的题会自动进来"
-                        : (bankFilter == 1 ? "没有有分歧的题\n说明题库和模型一直给同一个答案"
-                                           : "错题本是空的\n改过答案、或采纳过不同意见才会进来"));
+                        : (bankFilter == 1 ? "没有待确认的题\n答过的题都必须先确认过才会被直接引用"
+                        : (bankFilter == 2 ? "没有有分歧的题\n说明题库和模型一直给同一个答案"
+                                           : "错题本是空的\n改过答案、或采纳过不同意见才会进来")));
             }
         }
     }
@@ -2100,6 +2192,49 @@ public class MainActivity extends Activity {
             btnBankAll.setEnabled(total > 0);
             btnBankAll.setAlpha(total > 0 ? 1f : 0.45f);
         }
+        if (btnBankConfirm != null) {
+            int n = selectedKeys.size();
+            btnBankConfirm.setText(n > 0 ? "确认 " + n : "确认");
+            btnBankConfirm.setEnabled(n > 0);
+            btnBankConfirm.setAlpha(n > 0 ? 1f : 0.4f);
+        }
+    }
+
+    /**
+     * 多选「确认」：把勾选的待确认条目一次性标为可用。
+     *
+     * <p>记忆库的准入是「用户亲手确认」——模型自己答两次一致不算数，
+     * 所以这里必须由人点一下，之后同题才会 0ms 直出。
+     */
+    private void confirmBatchVerify() {
+        final int picked = selectedKeys.size();
+        if (picked == 0) return;
+        final List<Record.Bank> todo = new ArrayList<>();
+        for (Record.Bank b : Record.bankList(this)) {
+            if (!selectedKeys.contains(b.key)) continue;
+            if (b.verified || b.hasConflict()) continue;   // 已确认、或还有分歧的，不在这里一并处理
+            todo.add(b);
+        }
+        if (todo.isEmpty()) {
+            Toast.makeText(this, "选中的题都已确认过，或有分歧需要单独裁决",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        confirm("确认所选 " + todo.size() + " 道题？",
+                "确认后，这几道题再遇到会直接用记忆库的答案，不再问模型。"
+                        + "请确保它们是对的——确认错的答案会被一直沿用。",
+                new Runnable() {
+                    public void run() {
+                        for (Record.Bank b : todo) Record.bankConfirm(MainActivity.this, b);
+                        selectedKeys.clear();
+                        bankSelectMode = false;
+                        renderBank();
+                        refresh();
+                        Toast.makeText(MainActivity.this,
+                                "已确认 " + todo.size() + " 道题，之后遇到直接用",
+                                Toast.LENGTH_SHORT).show();
+                    }
+                });
     }
 
     /** 删除后 8 秒内可撤销：条目还在内存里，原样写回即可。 */

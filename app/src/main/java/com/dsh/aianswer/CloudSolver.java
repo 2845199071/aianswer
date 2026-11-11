@@ -29,30 +29,38 @@ public final class CloudSolver {
         public final String id, label, base, model;
         public final boolean free;
         public final String office;   // 申请 Key 的官网，空表示没有
+        /** 该厂商的视觉模型名；空字符串表示这家没有可用的视觉模型（如 DeepSeek）。 */
+        public final String visionModel;
 
-        Provider(String id, String label, String base, String model, boolean free, String office) {
+        Provider(String id, String label, String base, String model, boolean free,
+                 String office, String visionModel) {
             this.id = id; this.label = label; this.base = base; this.model = model;
             this.free = free; this.office = office;
+            this.visionModel = visionModel == null ? "" : visionModel;
         }
+
+        public boolean hasVision() { return visionModel != null && !visionModel.isEmpty(); }
     }
 
     /** 模型名按 2026-10 现状写死：deepseek-chat / deepseek-reasoner 已于 2026-07-24 下线。 */
     public static final Provider ZHIPU = new Provider(
             "zhipu", "智谱 GLM-4.7-Flash（免费）",
             "https://open.bigmodel.cn/api/paas/v4", "glm-4.7-flash", true,
-            "https://open.bigmodel.cn/usercenter/apikeys");
+            "https://open.bigmodel.cn/usercenter/apikeys", "glm-4v-flash");
 
     public static final Provider DEEPSEEK = new Provider(
             "deepseek", "DeepSeek V4.1-Flash（付费）",
             "https://api.deepseek.com", "deepseek-flash", false,
-            "https://platform.deepseek.com/api_keys");
+            // DeepSeek V4.1-Flash 已支持读图，视觉和文本共用同一个模型名
+            "https://platform.deepseek.com/api_keys", "deepseek-flash");
 
     // ---- 以下四家均实测国内可直连、OpenAI 兼容、有长期免费档（2026-10）----
     // 千帆：ERNIE-Speed-128K 永久免费，RPM 60，实测端点 0.44s，最快且频率最宽松
     public static final Provider QIANFAN = new Provider(
             "qianfan", "百度千帆 ERNIE-Speed（免费 · 60 次/分）",
             "https://qianfan.baidubce.com/v2", "ernie-speed-128k", true,
-            "https://console.bce.baidu.com/qianfan/ais/console/applicationConsole/application");
+            "https://console.bce.baidu.com/qianfan/ais/console/applicationConsole/application",
+            "ernie-4.5-turbo-vl");
 
     // ModelScope：绑定阿里云并实名后每天 2000 次（单模型 200~500 次）。
     // 2026-10 实测免费列表只有 37 个模型，Qwen3-8B 并不在其中（预设曾写错，会 404）。
@@ -62,22 +70,23 @@ public final class CloudSolver {
     public static final Provider MODELSCOPE = new Provider(
             "modelscope", "ModelScope 魔搭 DeepSeek-V4.1-Flash（免费 · 2000 次/天）",
             "https://api-inference.modelscope.cn/v1", "deepseek-ai/DeepSeek-V4.1-Flash", true,
-            "https://modelscope.cn/my/myaccesstoken");
+            "https://modelscope.cn/my/myaccesstoken", "Qwen/Qwen2.5-VL-7B-Instruct");
 
     // 硅基流动：9B 以下小模型长期免费，30 RPM / 60K TPM
     public static final Provider SILICON = new Provider(
             "silicon", "硅基流动 Qwen3-8B（免费 · 30 次/分）",
             "https://api.siliconflow.cn/v1", "Qwen/Qwen3-8B", true,
-            "https://cloud.siliconflow.cn/account/ak");
+            "https://cloud.siliconflow.cn/account/ak", "Qwen/Qwen2.5-VL-7B-Instruct");
 
     // 混元 Lite：永久免费，256K 上下文
     public static final Provider HUNYUAN = new Provider(
             "hunyuan", "腾讯混元 Lite（免费）",
             "https://api.hunyuan.cloud.tencent.com/v1", "hunyuan-lite", true,
-            "https://console.cloud.tencent.com/hunyuan/api-key");
+            "https://console.cloud.tencent.com/hunyuan/api-key", "hunyuan-vision");
 
     public static final Provider CUSTOM = new Provider(
-            "custom", "自定义（任何 OpenAI 兼容服务）", "", "", false, "");
+            "custom", "自定义（任何 OpenAI 兼容服务）", "", "", false, "",
+            "glm-4v-flash");   // 自定义服务的视觉模型名差异太大，默认按最常见的填，失败会提示
 
     /** 顺序 = 弹窗里的排列顺序，按「免费额度 + 速度」从优到次。 */
     public static final Provider[] ALL =
