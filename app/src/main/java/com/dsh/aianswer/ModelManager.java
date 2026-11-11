@@ -57,6 +57,15 @@ public final class ModelManager {
     /** 顺序 = 列表顺序，也决定「自动挑一个可用的」时的优先级：先小后大更稳。 */
     public static final Spec[] ALL = {SMALL, LARGE, MID};
 
+    /**
+     * 由模型市场清单（assets/models.json）临时构造一个 Spec。
+     * 市场里的模型不进 ALL，靠 Prefs.spec() 的兜底查找命中。
+     */
+    public static Spec make(String id, String name, String badge, String brief,
+                            String url, long bytes) {
+        return new Spec(id, name, badge, brief, url, bytes);
+    }
+
     /** 低于这个体积肯定不是完整模型，用来兜底放行，避免阈值再算错时把用户卡死。 */
     private static final long MIN_PLAUSIBLE = 200L * 1024 * 1024;
 

@@ -13,3 +13,6 @@ captures/
 # 系统文件
 Thumbs.db
 .DS_Store
+
+# 本地监控缓存（star/watch 轮询产生，不属于源码）
+.github-watch.json

@@ -26,6 +26,15 @@ public final class Prefs {
     private static final String K_DUAL_CLOUD = "dual_cloud";  // 允许复核时消耗在线额度
     private static final String K_CLOUD_CALLS = "cloud_calls"; // 累计在线调用次数（仅计数，不涉Key）
 
+    // ---- v7.1 / v7.2 新增 ----
+    private static final String K_EXPLAIN   = "explain";       // 出答案附一句解析
+    private static final String K_HUMAN     = "human_click";   // 拟人点击（默认关）
+    private static final String K_AUTO_NEXT = "auto_next";     // 答完自动点下一题（默认关）
+    private static final String K_ROUTE     = "auto_route";    // 按题型自动选模型
+    private static final String K_VOTE      = "vote";          // 多模型投票
+    private static final String K_SELF_FIRST= "self_bank_first"; // 先查自选题库，未命中再问 AI
+    private static final String K_ACC_GUIDED = "acc_guided";    // 首次读屏引导是否已弹过
+
     private Prefs() {}
 
     private static SharedPreferences sp(Context c) {
@@ -48,6 +57,9 @@ public final class Prefs {
     public static ModelManager.Spec spec(Context c) {
         String id = specId(c);
         for (ModelManager.Spec s : ModelManager.ALL) if (s.id.equals(id)) return s;
+        // 不在内置三档里：可能是模型市场下载的新档位
+        ModelMarket.Item it = ModelMarket.byId(c, id);
+        if (it != null) return ModelMarket.specOf(it);
         return ModelManager.LARGE;
     }
 
@@ -140,5 +152,60 @@ public final class Prefs {
             return !baseCustom(c).isEmpty() && !modelCustom(c).isEmpty();
         }
         return true;
+    }
+
+    /** 已配置好的在线厂商数量：投票制要 ≥2 才能开。 */
+    public static int cloudReadyCount(Context c) {
+        int n = 0;
+        for (CloudSolver.Provider p : CloudSolver.ALL) {
+            if (cloudReady(c, p)) n++;
+        }
+        return n;
+    }
+
+    /** 已配置好的在线厂商，按「免费优先 + 预设顺序」排列，投票时最多取前 3 个。 */
+    public static java.util.List<CloudSolver.Provider> cloudReadyList(Context c) {
+        java.util.List<CloudSolver.Provider> out = new java.util.ArrayList<>();
+        for (CloudSolver.Provider p : CloudSolver.ALL) {
+            if (cloudReady(c, p) && p.free) out.add(p);
+        }
+        for (CloudSolver.Provider p : CloudSolver.ALL) {
+            if (cloudReady(c, p) && !p.free) out.add(p);
+        }
+        return out;
+    }
+
+    // ---------- v7.1 新增 ----------
+
+    /** 出答案后附一句解析。默认关：解析是第二次推理，会多花 0.5~2 秒。 */
+    public static boolean explainOn(Context c) { return sp(c).getBoolean(K_EXPLAIN, false); }
+    public static void setExplainOn(Context c, boolean v) { sp(c).edit().putBoolean(K_EXPLAIN, v).apply(); }
+
+    /** 拟人点击：给点击加随机延迟与轻微偏移。默认关，必须用户显式打开。 */
+    /** 答完自动点「下一题」。默认关：连答是批量刷题才需要的行为，不该默认替用户做。 */
+    public static boolean autoNext(Context c) { return sp(c).getBoolean(K_AUTO_NEXT, false); }
+    public static void setAutoNext(Context c, boolean v) { sp(c).edit().putBoolean(K_AUTO_NEXT, v).apply(); }
+
+    public static boolean humanClick(Context c) { return sp(c).getBoolean(K_HUMAN, false); }
+    public static void setHumanClick(Context c, boolean v) { sp(c).edit().putBoolean(K_HUMAN, v).apply(); }
+
+    /** 按题型自动选模型（短题走本地、数学/文言/长题走在线）。默认开，可在设置里关。 */
+    public static boolean autoRoute(Context c) { return sp(c).getBoolean(K_ROUTE, true); }
+    public static void setAutoRoute(Context c, boolean v) { sp(c).edit().putBoolean(K_ROUTE, v).apply(); }
+
+    /** 多模型投票：需要 ≥2 个在线厂商，开启后复核自动让位。 */
+    public static boolean vote(Context c) { return sp(c).getBoolean(K_VOTE, false); }
+    public static void setVote(Context c, boolean v) { sp(c).edit().putBoolean(K_VOTE, v).apply(); }
+
+    /**
+     * 先查自选题库、没命中再问 AI。默认开。
+     * 题库命中是 0 次在线调用、毫秒级，所以「有题库就用」是更合理的默认。
+     */
+    public static boolean accGuided(Context c) { return sp(c).getBoolean(K_ACC_GUIDED, false); }
+    public static void setAccGuided(Context c, boolean v) { sp(c).edit().putBoolean(K_ACC_GUIDED, v).apply(); }
+
+    public static boolean selfBankFirst(Context c) { return sp(c).getBoolean(K_SELF_FIRST, true); }
+    public static void setSelfBankFirst(Context c, boolean v) {
+        sp(c).edit().putBoolean(K_SELF_FIRST, v).apply();
     }
 }

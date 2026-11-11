@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  题库中心（v7.1）
+  ─ 三段筛选：全部 / 有分歧 / 错题
+  ─ 列表由 MainActivity.renderBank() 动态生成（item_bank.xml）
+  ─ 复用现有 token：18sp 标题、SegmentItem 分段控件、card 圆角、PrimaryButton
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:paddingStart="18dp"
+    android:paddingTop="16dp"
+    android:paddingEnd="18dp"
+    android:paddingBottom="14dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="题库"
+            android:textColor="@color/text_primary"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvBankCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/badge_bg"
+            android:paddingStart="9dp"
+            android:paddingTop="3dp"
+            android:paddingEnd="9dp"
+            android:paddingBottom="3dp"
+            android:text="0 题"
+            android:textColor="@color/text_hint"
+            android:textSize="11sp" />
+
+        <!-- 进入/退出多选模式 -->
+        <TextView
+            android:id="@+id/btnBankSelect"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/pill_soft"
+            android:clickable="true"
+            android:focusable="true"
+            android:paddingStart="12dp"
+            android:paddingTop="5dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="5dp"
+            android:text="选择"
+            android:textColor="@color/primary"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- 分段筛选 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/seg_group"
+        android:orientation="horizontal"
+        android:padding="3dp">
+
+        <TextView
+            android:id="@+id/segAll"
+            style="@style/SegmentItem"
+            android:text="全部" />
+
+        <TextView
+            android:id="@+id/segConflict"
+            style="@style/SegmentItem"
+            android:text="有分歧" />
+
+        <TextView
+            android:id="@+id/segWrong"
+            style="@style/SegmentItem"
+            android:text="错题" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tvBankHint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:lineSpacingExtra="3dp"
+        android:text="答过的题会自动记住。改过的答案是「金标准」，模型以后不会再覆盖它。"
+        android:textColor="@color/text_hint"
+        android:textSize="11sp" />
+
+    <!-- 自选题库入口：独立二级弹窗，和「本机记忆」分开 -->
+    <LinearLayout
+        android:id="@+id/btnSelfBankEntry"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/model_item_bg"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="14dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="10dp">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="自选题库"
+                android:textColor="@color/text_body"
+                android:textSize="14sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="上传 xlsx / Word / 文本，命中免调用"
+                android:textColor="@color/text_hint"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvSelfEntryCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="未导入"
+            android:textColor="@color/text_hint"
+            android:textSize="11sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:text="›"
+            android:textColor="@color/primary"
+            android:textSize="20sp" />
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_weight="1"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:id="@+id/boxBank"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <TextView
+                android:id="@+id/tvBankEmpty"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:lineSpacingExtra="4dp"
+                android:paddingTop="36dp"
+                android:paddingBottom="36dp"
+                android:text="这里还是空的\n刷几道题后，答过的题会自动进来"
+                android:textColor="@color/text_hint"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- 批量删除后的撤销条：8 秒内可恢复 -->
+    <TextView
+        android:id="@+id/tvUndoBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/pill_soft"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        android:textColor="@color/primary"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
+    <!-- 多选模式的操作条：只在「选择」打开时出现 -->
+    <LinearLayout
+        android:id="@+id/boxBankAction"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/btnBankAll"
+            style="@style/GhostButton"
+            android:text="全选本页" />
+
+        <TextView
+            android:id="@+id/btnBankDelete"
+            style="@style/GhostButton"
+            android:layout_marginStart="8dp"
+            android:text="删除所选"
+            android:textColor="@color/danger" />
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/btnCloseBank"
+        style="@style/PrimaryButton"
+        android:layout_marginTop="10dp"
+        android:text="完成" />
+</LinearLayout>

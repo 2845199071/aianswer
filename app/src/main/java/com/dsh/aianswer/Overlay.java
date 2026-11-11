@@ -30,6 +30,9 @@ public final class Overlay {
     private TextView tvDetail;
     private TextView tvMeta;
     private TextView tvQ;
+    /** 一句解析：最多两行，超出截断，点开看全文。 */
+    private TextView tvWhy;
+    private String whyFull = "";
     private TextView btnScan;
     private GradientDrawable bgBox;
     private boolean attached = false;
@@ -92,6 +95,21 @@ public final class Overlay {
         tvQ.setMaxLines(2);
         tvQ.setVisibility(View.GONE);
 
+        // 解析：只占两行（约 28 字），点一下弹全文。
+        // 悬浮窗本身不抢焦点，弹窗是独立窗口，所以这里可以收点击。
+        tvWhy = new TextView(ctx);
+        tvWhy.setTextColor(0xFFB9C9E0);
+        tvWhy.setTextSize(12);
+        // 只占一行：实测两行时悬浮窗会盖住题干第一行，得不偿失（点一下可看全文）
+        tvWhy.setMaxLines(1);
+        tvWhy.setMaxWidth(dp(210));
+        tvWhy.setLineSpacing(0f, 1.15f);
+        tvWhy.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        tvWhy.setVisibility(View.GONE);
+        tvWhy.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { showWhyDialog(); }
+        });
+
         // 右侧「识别」按钮：没开自动解题时也能手动触发一次扫描
         btnScan = new TextView(ctx);
         btnScan.setText("识别");
@@ -115,6 +133,7 @@ public final class Overlay {
         col.setOrientation(LinearLayout.VERTICAL);
         col.addView(tvAnswer);
         col.addView(tvDetail);
+        col.addView(tvWhy);
         col.addView(tvMeta);
         col.addView(tvQ);
 
@@ -255,6 +274,50 @@ public final class Overlay {
                 tvDetail.setText(detail);
             }
         }
+        // 换了内容就把上一条解析收起来，等新的解析算完再显示
+        if (tvWhy != null) {
+            whyFull = "";
+            tvWhy.setVisibility(View.GONE);
+        }
+    }
+
+    /** 解析文本：空串表示这条没有解析，直接隐藏。 */
+    public void updateWhy(String text) {
+        if (tvWhy == null) return;
+        String t = text == null ? "" : text.trim();
+        if (t.isEmpty()) {
+            whyFull = "";
+            tvWhy.setVisibility(View.GONE);
+            return;
+        }
+        whyFull = t;
+        tvWhy.setVisibility(View.VISIBLE);
+        tvWhy.setText("解析 " + t + "  ›");
+    }
+
+    /** 点解析文字 → 小窗看全文（最多 5 行，可滚动）。 */
+    private void showWhyDialog() {
+        if (whyFull == null || whyFull.isEmpty()) return;
+        try {
+            TextView body = new TextView(ctx);
+            body.setText(whyFull);
+            body.setTextSize(14);
+            body.setTextColor(0xFF1C2333);
+            body.setLineSpacing(0f, 1.35f);
+            body.setPadding(dp(20), dp(16), dp(20), dp(6));
+            body.setMaxLines(5);
+            body.setMovementMethod(new android.text.method.ScrollingMovementMethod());
+
+            android.app.AlertDialog d = new android.app.AlertDialog.Builder(ctx, R.style.WhiteDialog)
+                    .setTitle("解析")
+                    .setView(body)
+                    .setPositiveButton("知道了", null)
+                    .create();
+            if (d.getWindow() != null && Build.VERSION.SDK_INT >= 26) {
+                d.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
+            }
+            d.show();
+        } catch (Throwable ignored) {}
     }
 
     public void updateQuestion(String q) {
@@ -269,6 +332,27 @@ public final class Overlay {
      * rects 是扁平化的 {left,top,right,bottom} 序列（选项节点的屏幕坐标）。
      * 依次尝试「原位置 → 左侧 → 右侧 → 顶部 → 底部」，挑第一个不重叠的。
      */
+    /**
+     * 点击期间让悬浮窗「透传」触摸。
+     *
+     * <p>窗口默认是可触摸的，落在它上面的手势会被它吃掉——表现为「点了选项但没选上」，
+     * 而且 {@code ScreenScan.click} 还会返回 true（ACTION_CLICK 兜底走的是 dispatchGesture，
+     * 手势落在窗口上也算投递成功）。实测最靠上的 A 选项最容易中招，因为悬浮窗底部正好压着它。
+     *
+     * <p>点击前后各调一次，中间几百毫秒里用户也不会去点悬浮窗。
+     */
+    public void setPassThrough(boolean pass) {
+        if (lp == null) return;
+        final int flag = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
+        boolean cur = (lp.flags & flag) != 0;
+        if (cur == pass) return;
+        if (pass) lp.flags |= flag;
+        else lp.flags &= ~flag;
+        try {
+            if (attached && root != null) wm.updateViewLayout(root, lp);
+        } catch (Throwable ignored) {}
+    }
+
     public void avoid(int[] rects) {
         if (!attached || root == null || rects == null || rects.length < 4) return;
         if (!Prefs.avoidOverlay(ctx)) return;
