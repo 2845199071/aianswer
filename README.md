@@ -139,7 +139,9 @@ flowchart TD
 
 ## 四、使用
 
-![四步上手：安装 → 授权 → 选解题方式 → 开始答题](docs/images/quickstart.png)
+![四步上手：安装 → 授权 → 选解题方式 → 开始答题](docs/images/tutorial.png)
+
+> 这张就是完整教程图（[docs/images/tutorial.png](docs/images/tutorial.png)，2160×3182），可以直接存手机或转发。更细的图文在 [docs/使用教程.md](docs/%E4%BD%BF%E7%94%A8%E6%95%99%E7%A8%8B.md)。
 
 **装之前先对一下（这四条任何一条不满足都会「装了用不了」）**
 
