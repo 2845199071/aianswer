@@ -275,6 +275,23 @@ public class QService extends AccessibilityService {
     }
 
     /**
+     * 「读屏完全空白」也算候选页。
+     *
+     * <p>小程序 / Canvas 自绘页面的无障碍树就是空的（v7.7.7 起靠截图识别解这类页面）。
+     * 以前 looksLikeQuiz 要求「至少 3 段文字」，而这类页面一段都读不到 ——
+     * 结果两条截图兜底全被同一个判定挡死，自动模式永远停在「读屏没拿到内容」，
+     * 只有用户手动点「识别」（verify）才放行。测试机复现：题目文字明明画在屏幕上。
+     *
+     * <p>空白页分不清是答题页还是聊天页，所以**只用于自动模式的截图兜底**，
+     * 且调用方先排除系统界面 / 桌面（launcher 会被 pickRoot 拿到一堆图标文字，
+     * texts 一般不为空，不会落进这个分支）。
+     */
+    private static boolean looksLikeQuizOrBlank(ScreenScan.Result r) {
+        if (r != null && r.texts != null && r.texts.isEmpty() && !skipPkg(r.pkg)) return true;
+        return looksLikeQuiz(r);
+    }
+
+    /**
      * 页面像不像答题页。
      *
      * <p>「读屏认不出选项」不等于「这是答题页」——微信聊天、桌面、设置页同样认不出。
@@ -321,7 +338,7 @@ public class QService extends AccessibilityService {
         if (!VisionSolver.available(this)) return false;     // 没配视觉模型 → 交给 OCR 兜底
         // 不像答题页就不截（防止在聊天页/桌面乱上传）；但用户手动点「识别」时例外 ——
         // 读屏完全读不到内容时，用户点这一下就是明确要求「看图答题」。
-        if (!looksLikeQuiz(r) && !verify) return false;
+        if (!looksLikeQuizOrBlank(r) && !verify) return false;
 
         long now = System.currentTimeMillis();
         if (visionBusy) return true;
@@ -444,7 +461,7 @@ public class QService extends AccessibilityService {
 
     private boolean tryOcr(boolean verify, ScreenScan.Result r) {
         if (!OcrEngine.supported()) return false;
-        if (!looksLikeQuiz(r)) return false;                  // 不像答题页，绝不截图
+        if (!looksLikeQuizOrBlank(r)) return false;           // 不像答题页，绝不截图
         long now = System.currentTimeMillis();
         if (ocrBusy) return true;
         // 刚在同一个页面答完题，接下来几秒页面通常只是变成「结果页」——
@@ -844,7 +861,15 @@ public class QService extends AccessibilityService {
             if (tryVision(verify, r)) return;
             if (tryOcr(verify, r)) return;
             if (n == 0) {
-                fail("读屏没拿到内容", "点「识别」用看图答题");
+                // 读屏一个字都没读到：多半是自绘页面。这时截图兜底为什么没接手，要说明白，
+                // 否则用户点「识别」也没用（手动路径不受限，能出答案；但下一题又卡住）。
+                if (!Prefs.cloudOn(this)) {
+                    fail("读屏没拿到内容", "在线模型关着，自动截图兜底用不了 · 点「识别」手动看图");
+                } else if (!VisionSolver.available(this) && !OcrEngine.supported()) {
+                    fail("读屏没拿到内容", "当前服务商不支持看图 · 换成智谱/硅基流动，或下载本地模型");
+                } else {
+                    fail("读屏没拿到内容", "点「识别」用看图答题");
+                }
             } else {
                 fail("没认出选项", "读到 " + n + " 段文字，至少需要 2 个 A/B/C 选项");
             }
