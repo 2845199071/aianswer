@@ -249,6 +249,10 @@ public final class Prefs {
      * 先查自选题库、没命中再问 AI。默认开。
      * 题库命中是 0 次在线调用、毫秒级，所以「有题库就用」是更合理的默认。
      */
+    /** 首启环境自检是否已经提示过（只在第一次进 App 且缺关键条件时自动弹）。 */
+    public static boolean selfCheckShown(Context c) { return sp(c).getBoolean("selfcheck_shown", false); }
+    public static void setSelfCheckShown(Context c) { sp(c).edit().putBoolean("selfcheck_shown", true).apply(); }
+
     public static boolean accGuided(Context c) { return sp(c).getBoolean(K_ACC_GUIDED, false); }
     public static void setAccGuided(Context c, boolean v) { sp(c).edit().putBoolean(K_ACC_GUIDED, v).apply(); }
 

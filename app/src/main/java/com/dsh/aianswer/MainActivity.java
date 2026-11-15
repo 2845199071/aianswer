@@ -275,6 +275,14 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         sForeground = new java.lang.ref.WeakReference<>(this);
+        // 首启自检：缺读屏/悬浮窗/解题方式时，直接把「缺什么、去哪开」摆出来，
+        // 别让新用户对着一个什么都不出的界面猜。只弹一次，之后走设置里的入口。
+        if (!Prefs.selfCheckShown(this) && !SelfCheck.usable(this)) {
+            Prefs.setSelfCheckShown(this);
+            ui.postDelayed(new Runnable() {
+                public void run() { showSelfCheck(); }
+            }, 700);
+        }
         refresh();
         ui.removeCallbacks(statusTick);
         ui.post(statusTick);
@@ -1421,6 +1429,60 @@ public class MainActivity extends Activity {
 
     // ================= 诊断 =================
 
+    /**
+     * 环境自检：逐条列出「能不能用」，缺什么就指到哪去开。
+     *
+     * <p>为什么需要它：作者自己的手机上读屏、悬浮窗、Key、模型早就配好了，
+     * 换一个人安装，这四件事一件都没做，表现就是「装上了什么都不出」。
+     * 没有这张清单，用户只会说「用不了」，也没法自查。
+     */
+    private void showSelfCheck() {
+        final java.util.List<SelfCheck.Item> items = SelfCheck.run(this);
+        StringBuilder sb = new StringBuilder();
+        int firstAction = SelfCheck.ACT_NONE;
+        for (SelfCheck.Item it : items) {
+            if (!it.ok && firstAction == SelfCheck.ACT_NONE) firstAction = it.action;
+            sb.append(it.ok ? "✔ " : (it.fatal ? "✘ " : "△ ")).append(it.title).append('\n');
+            sb.append("    ").append(it.detail.replace("\n", "\n    ")).append('\n');
+        }
+        int miss = SelfCheck.fatalMissing(this);
+        sb.append('\n').append(miss == 0
+                ? "结论：环境齐了，可以直接用。"
+                : "结论：还有 " + miss + " 项必须处理，否则读不到题、出不了答案。");
+
+        AlertDialog.Builder b = new AlertDialog.Builder(this, R.style.WhiteDialog)
+                .setTitle("环境自检")
+                .setMessage(sb.toString())
+                .setNegativeButton("关闭", null);
+        switch (firstAction) {
+            case SelfCheck.ACT_ACC:
+                b.setPositiveButton("去开读屏", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface d, int w) {
+                        try {
+                            startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+                        } catch (Throwable ignored) {}
+                    }
+                });
+                break;
+            case SelfCheck.ACT_OVERLAY:
+                b.setPositiveButton("去授权悬浮窗", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface d, int w) { openOverlaySettings(); }
+                });
+                break;
+            case SelfCheck.ACT_SOLVER:
+                b.setPositiveButton("在线配 Key", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface d, int w) { showOnlineDialog(); }
+                });
+                b.setNeutralButton("下载本地模型", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface d, int w) { showLocalDialog(); }
+                });
+                break;
+            default:
+                break;
+        }
+        b.show();
+    }
+
     private void showDiagnosis() {
         QService.Diag d = QService.diagnose();
         StringBuilder sb = new StringBuilder();
@@ -1543,6 +1605,19 @@ public class MainActivity extends Activity {
         tvTh      = v.findViewById(R.id.tvTh);
         tvThHint  = v.findViewById(R.id.tvThHint);
         tvSettingsVersion = v.findViewById(R.id.tvSettingsVersion);
+        // 环境自检入口：右侧直接显示「全部就绪 / 缺 N 项」，不用点开才知道
+        View rowSelf = v.findViewById(R.id.rowSelfCheck);
+        TextView tvSelfState = v.findViewById(R.id.tvSelfCheckState);
+        if (tvSelfState != null) {
+            int miss = SelfCheck.fatalMissing(this);
+            tvSelfState.setText(miss == 0 ? "全部就绪" : "缺 " + miss + " 项");
+            tvSelfState.setTextColor(clr(miss == 0 ? R.color.text_hint : R.color.danger));
+        }
+        if (rowSelf != null) {
+            rowSelf.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View x) { showSelfCheck(); }
+            });
+        }
 
         binding = true;
         swClick.setChecked(Prefs.autoClick(this));
