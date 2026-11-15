@@ -123,6 +123,10 @@ public class QService extends AccessibilityService {
     private long lastScanAt = 0;                          // 上次完整扫描时刻
     private long lastWinSwitchAt = 0;                     // 上次窗口切换时刻（切页是强信号，绕过冷包退避）
     private long pkgCooldownUntil = 0;                    // 冷包退避截止时刻
+    private int visionFailStreak = 0;                     // 视觉连续失败次数（≥2 进入 30s 冷却）
+    private long visionCooldownUntil = 0;                 // 视觉冷却截止时刻
+    private int readRetryStreak = 0;                      // 「有文字但没认出选项」的读屏重试次数
+    private long lastReadRetryAt = 0;
     private String lastPkg = "";                          // 上一前台包名
     private int quietStreak = 0;                          // 同一包连续「不像题」的次数
     private PowerManager pm;
@@ -340,6 +344,7 @@ public class QService extends AccessibilityService {
      */
     private boolean tryVision(boolean verify, ScreenScan.Result r) {
         if (!Prefs.cloudOn(this)) return false;              // 在线关着，不偷偷调云端
+        if (System.currentTimeMillis() < visionCooldownUntil) return false;   // 连续失败冷却中
         if (!VisionSolver.available(this)) return false;     // 没配视觉模型 → 交给 OCR 兜底
         // 不像答题页就不截（防止在聊天页/桌面乱上传）；但用户手动点「识别」时例外 ——
         // 读屏完全读不到内容时，用户点这一下就是明确要求「看图答题」。
@@ -350,7 +355,20 @@ public class QService extends AccessibilityService {
         if (!looksLikeQuiz(r) && !verify && !blankOk) return false;
 
         long now = System.currentTimeMillis();
-        if (visionBusy) return true;
+        if (visionBusy) {
+            // 视觉请求还在路上（最长十几秒）。这期间读屏可能已经渲染完了 ——
+            // 原生页每 tick 快速读一次，读到题就立刻答题，不让用户干等一次可能失败的网络调用。
+            // 视觉结果回来后靠同题判重丢弃，不会重复出答案。
+            try {
+                ScreenScan.Result cur = ScreenScan.scan(this);
+                if (cur != null && cur.options.size() >= 2) {
+                    visionBusy = false;
+                    Log.i(TAG, "视觉等待期间读屏已读到题，直接采用读屏结果");
+                    handle(cur, verify);
+                }
+            } catch (Throwable ignored) {}
+            return true;
+        }
         // 刚在这一页答完题：画面多半已经变成结果页，别为同一道题再花一次调用
         if (r != null && answerPkg.equals(r.pkg) && now - lastAnswerAt < 12000) return true;
         if (now - lastVisionAt < 6000) return true;
@@ -425,7 +443,17 @@ public class QService extends AccessibilityService {
     private void onVisionAuto(VisionSolver.Result vr, String pkg, boolean verify) {
         visionBusy = false;
         if (vr == null) { fail("看图读题失败", "没有返回内容"); return; }
-        if (vr.error != null) { fail("看图读题失败", vr.error); return; }
+        if (vr.error != null) {
+            // 连续失败进冷却：失败循环的根源是「每次都重试同一道注定失败的视觉题」，
+            // 冷却期间读屏/OCR 照常，等翻到下一题自然恢复。
+            visionFailStreak++;
+            if (visionFailStreak >= 2) {
+                visionCooldownUntil = System.currentTimeMillis() + 30000;
+                Log.i(TAG, "视觉连续失败 " + visionFailStreak + " 次，冷却 30 秒");
+            }
+            fail("看图读题失败", vr.error);
+            return;
+        }
 
         final String q = Layout.stripDynamic(vr.question == null ? "" : vr.question);
         if (q.length() < 4) {
@@ -463,6 +491,7 @@ public class QService extends AccessibilityService {
         if (tp.contains("多选") || tp.contains("不定项") || tp.contains("至少")) {
             r.texts.add("多选");
         }
+        visionFailStreak = 0;                 // 成功一次就清失败计数
         Log.i(TAG, "视觉读题 " + r.options.size() + " 个选项 / 题型 " + (tp.isEmpty() ? "未知" : tp)
                 + " / " + vr.ms + "ms → 交给题库和模型判定");
         // 走和读屏完全一样的判定链：自选题库 → 记忆库 → （都没命中）采用视觉答案
@@ -917,6 +946,15 @@ public class QService extends AccessibilityService {
             int n = r == null ? 0 : r.texts.size();
             // 默认路线：截图直接交给视觉模型读题答题。
             // OCR 退成兜底 —— 只在没配视觉模型时才用。
+            // 页面有文字只是没认出选项：多半是切页后 150ms 那次扫得太早，页面还没渲染完。
+            // 先快速重读一次（最多 2 次），仍不行才走截图 —— 原生页不该白花一次视觉调用。
+            if (n >= 3 && !verify && readRetryStreak < 2 && now - lastReadRetryAt > 600) {
+                readRetryStreak++;
+                lastReadRetryAt = now;
+                h.removeCallbacks(fire);
+                h.postDelayed(fire, 300);
+                return;
+            }
             boolean handled = tryVision(verify, r);
             if (!handled) handled = tryOcr(verify, r);
             if (handled) { quietStreak = 0; return; }
@@ -962,6 +1000,7 @@ public class QService extends AccessibilityService {
      *               不再二次调用文本模型 —— 截图路径一次调用就出结果。
      */
     private void handle(ScreenScan.Result r, boolean verify, String preset) {
+        readRetryStreak = 0;                  // 能走到判定链说明读屏/视觉已解析出题目
         if (skipPkg(r.pkg)) return;   // 切到系统界面或本 App：正常场景，不打扰
 
         final String q = Layout.stripDynamic(r.question == null ? "" : r.question);

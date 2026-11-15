@@ -240,7 +240,9 @@ public final class VisionSolver {
             if (think) {
                 body.put("thinking", new JSONObject().put("type", "enabled"));
                 body.put("reasoning_effort", "low");
-                body.put("max_tokens", 1400);
+                // 思考 token 计入 max_tokens：思考被截断时 content 就是空的（整题失败）。
+                // 实测罚款类题思考能写 6000+ 字，1400 必然不够，3000 才能让 JSON 出来。
+                body.put("max_tokens", 3000);
             } else {
                 body.put("max_tokens", 400);
             }
