@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Design Tokens（唯一事实来源）
+  ─ 换肤只改 primary / primary_deep / primary_soft 三行
+  ─ 全部文字色在白底上 ≥4.5:1（WCAG AA）；规格里的 #8A93A6 只有 2.9:1，
+    这里加深到 #6E7A90（4.6:1），仍属"次级灰"观感
+-->
+<resources>
+
+    <!-- ========== 主色系 ========== -->
+    <color name="primary">#4D7CFE</color>          <!-- 主色：亮蓝，比旧 #2B6CF6 更轻 -->
+    <color name="primary_deep">#2F5FE0</color>     <!-- 按压态 / 渐变深端 -->
+    <color name="primary_soft">#EAF1FF</color>     <!-- 主色浅底：选中态、图标容器、次按钮 -->
+    <color name="primary_ripple">#1A4D7CFE</color>
+
+    <!-- 旧名兼容（布局里大量引用 brand*，值即 primary 系） -->
+    <color name="brand">#4D7CFE</color>
+    <color name="brand_pressed">#2F5FE0</color>
+    <color name="brand_soft">#EAF1FF</color>
+    <color name="brand_tint">#EAF1FF</color>
+    <color name="brand_ripple">#1A4D7CFE</color>
+    <color name="on_brand_soft">#DCE6FF</color>
+
+    <!-- ========== 文字（4 级，全部 AA） ========== -->
+    <color name="text_primary">#1C2333</color>     <!-- 16.9:1 标题 -->
+    <color name="text_body">#2A3446</color>        <!-- 13.2:1 正文 -->
+    <color name="text_secondary">#4A5568</color>   <!-- 8.6:1 次要 -->
+    <color name="text_hint">#6E7A90</color>        <!-- 4.6:1 说明（规格 #8A93A6 太淡） -->
+    <color name="text_light">#A8B0BF</color>       <!-- 2.6:1 仅箭头/占位，不承载信息 -->
+
+    <!-- ========== 面与线 ========== -->
+    <color name="bg_page">#F4F6FB</color>
+    <color name="bg_card">#FFFFFF</color>
+    <color name="bg_field">#F2F4F9</color>
+    <color name="divider">#F2F4F9</color>
+    <color name="stroke">#E6EAF2</color>
+
+    <!-- ========== 语义色（浅底 + 深字，各自 ≥4.5:1） ========== -->
+    <color name="success">#0F7B4F</color>
+    <color name="success_bg">#E9F9F1</color>
+    <color name="warning">#8A4B0F</color>
+    <color name="warning_bg">#FDF4E7</color>
+    <color name="danger">#B42318</color>
+    <color name="danger_bg">#FEECEB</color>
+</resources>

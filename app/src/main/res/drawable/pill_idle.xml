@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  中性胶囊：白底 + 细描边。
+  原来用 #F2F4F9 灰底，在 #F4F6FB 页面底上几乎看不出边界，改成白底描边后
+  无论落在页面底还是白卡里都清晰。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/bg_card" />
+    <corners android:radius="100dp" />
+    <stroke android:width="1dp" android:color="@color/stroke" />
+</shape>

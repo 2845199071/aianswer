@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  设置项底框：浅灰圆角块。
+  弹窗本身是白底，直接用白卡看不出层次；这里用 bg_field 让每一项成为独立一块，
+  项与项之间再留 8dp 间距，扫读时不会糊成一片。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/bg_field" />
+    <corners android:radius="12dp" />
+</shape>

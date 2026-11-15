@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 主卡完成态：浮球已在显示时切成功绿 -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#33FFFFFF">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="0"
+                android:endColor="#2C9C74"
+                android:startColor="@color/success" />
+            <corners android:radius="16dp" />
+        </shape>
+    </item>
+</ripple>

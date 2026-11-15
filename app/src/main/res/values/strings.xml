@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AI答题</string>
+    <string name="acc_desc">读取当前屏幕上的题干与选项，用本机模型给出答案。全程离线，不联网、不上传任何内容。</string>
+    <color name="ic_bg">#2B6CF6</color>
+</resources>

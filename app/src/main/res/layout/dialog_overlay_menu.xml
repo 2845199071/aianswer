@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  悬浮窗长按菜单（v7.7.9）
+
+  以前是 AlertDialog.setItems 的系统列表：黑字白底、一行行紧贴，和 App 里
+  「设置」那张卡片式排版完全两套观感——用户从设置页切到悬浮窗会觉得像换了个软件。
+
+  现在照 dialog_settings.xml 的排版重做：
+  白底大圆角弹窗 → 标题 + 当前状态 → 三段小标题（解题模式 / 本场记录 / 工具）
+  → 每项一个浅灰圆角块（style/MenuRow），标题 14sp、说明 11sp 缩进在同块内
+  → 底部一个主按钮「完成」。
+
+  纯静态布局，逻辑全在 Overlay.showMenu() 里绑。
+-->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:scrollbars="none">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="18dp"
+        android:paddingTop="20dp"
+        android:paddingEnd="18dp"
+        android:paddingBottom="16dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="悬浮窗"
+            android:textColor="@color/text_primary"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <!-- 当前状态：自动解题 / 已暂停 / 手动识别，一眼知道现在是什么模式 -->
+        <TextView
+            android:id="@+id/tvOvStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text=""
+            android:textColor="@color/text_hint"
+            android:textSize="12sp" />
+
+        <!-- ==================== 一、解题模式 ==================== -->
+        <TextView
+            style="@style/DialogSection"
+            android:layout_marginTop="14dp"
+            android:text="解题模式 · 机器怎么动手" />
+
+        <LinearLayout
+            android:id="@+id/rowOvMode"
+            style="@style/MenuRow">
+
+            <TextView
+                android:id="@+id/tvOvModeTitle"
+                style="@style/MenuRowTitle"
+                android:text="切换为自动解题" />
+
+            <TextView
+                android:id="@+id/tvOvModeHint"
+                style="@style/MenuRowHint"
+                android:text="" />
+        </LinearLayout>
+
+        <!-- ==================== 二、本场记录 ==================== -->
+        <TextView
+            style="@style/DialogSection"
+            android:text="本场记录 · 只影响这一次" />
+
+        <LinearLayout
+            android:id="@+id/rowOvCopy"
+            style="@style/MenuRow">
+
+            <TextView
+                style="@style/MenuRowTitle"
+                android:text="复制本场答案" />
+
+            <TextView
+                android:id="@+id/tvOvCopyHint"
+                style="@style/MenuRowHint"
+                android:text="把这一场答过的题和答案复制成文本，方便粘到别处" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/rowOvClear"
+            style="@style/MenuRow">
+
+            <TextView
+                style="@style/MenuRowTitle"
+                android:text="清空本场记录" />
+
+            <TextView
+                style="@style/MenuRowHint"
+                android:text="只清悬浮窗里的本场列表，不动题库和记忆库" />
+        </LinearLayout>
+
+        <!-- ==================== 三、工具 ==================== -->
+        <View style="@style/DialogDivider" />
+
+        <TextView
+            style="@style/DialogSection"
+            android:layout_marginTop="0dp"
+            android:text="工具 · 排查问题" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:layout_marginStart="2dp"
+            android:text="「校准题目区域」已做成悬浮窗上的常驻按钮，随时可点，不用再进这里"
+            android:textColor="@color/text_hint"
+            android:textSize="11sp" />
+
+        <LinearLayout
+            android:id="@+id/rowOvDump"
+            style="@style/MenuRow">
+
+            <TextView
+                style="@style/MenuRowTitle"
+                android:text="读屏诊断 · 导出节点" />
+
+            <TextView
+                android:id="@+id/tvOvDumpHint"
+                style="@style/MenuRowHint"
+                android:text="一直读不到题时导出一份节点文本，便于对照排查" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/rowOvHide"
+            style="@style/MenuRow">
+
+            <TextView
+                android:id="@+id/tvOvHideTitle"
+                style="@style/MenuRowTitle"
+                android:text="隐藏悬浮窗" />
+
+            <TextView
+                style="@style/MenuRowHint"
+                android:text="隐藏后回 App 主页点「悬浮窗」可恢复" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/btnOvDone"
+            style="@style/PrimaryButton"
+            android:layout_marginTop="18dp"
+            android:text="完成" />
+    </LinearLayout>
+</ScrollView>

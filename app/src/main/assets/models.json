@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "note": "模型清单。加新模型只改这个文件，不用改代码；url 为空表示尚未上线（列表里显示敬请期待）。",
+  "models": [
+    {
+      "id": "qwen2.5-0.5b-q4km",
+      "name": "轻量版",
+      "badge": "0.5B",
+      "fit": "短常识题、单选、选项很短",
+      "speed": "0.49 GB · 单题约 0.3s",
+      "brief": "最快，实测 80% / 70%，复杂题容易错",
+      "template": "ChatML（Qwen2.5）",
+      "url": "https://www.modelscope.cn/models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/master/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+      "bytes": 491400032
+    },
+    {
+      "id": "qwen2.5-1.5b-q4km",
+      "name": "均衡版",
+      "badge": "1.5B",
+      "fit": "通用选择题、法规条文、日常常识",
+      "speed": "1.06 GB · 单题约 0.6s",
+      "brief": "实测 100% / 90%，速度与准确率最优",
+      "template": "ChatML（Qwen2.5）",
+      "url": "https://www.modelscope.cn/models/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/master/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+      "bytes": 1117320736
+    },
+    {
+      "id": "qwen3-4b-2507-q4km",
+      "name": "旗舰版",
+      "badge": "4B",
+      "fit": "数学计算、长题干、需要推理的题",
+      "speed": "2.33 GB · 慢约 2 倍",
+      "brief": "知识面更广，复杂题比 1.5B 稳",
+      "template": "ChatML（Qwen3 非思考版）",
+      "url": "https://www.modelscope.cn/models/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/master/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+      "bytes": 2497281120
+    },
+    {
+      "id": "classic-guwen-1b-q4km",
+      "name": "文言专精版",
+      "badge": "1B",
+      "fit": "专用于文言文、古诗文、成语辨析",
+      "speed": "约 1.2 GB · 单题约 0.7s",
+      "brief": "规划中：只针对文言题型微调，其他题别用它",
+      "template": "ChatML",
+      "url": "",
+      "bytes": 0
+    }
+  ]
+}

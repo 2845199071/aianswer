@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 主行动卡：品牌色横向渐变（规格 §6 渐变数据卡），全页唯一高饱和面 -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#33FFFFFF">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="0"
+                android:endColor="#7A9BFF"
+                android:startColor="@color/primary" />
+            <corners android:radius="16dp" />
+        </shape>
+    </item>
+</ripple>

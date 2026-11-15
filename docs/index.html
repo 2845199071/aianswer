@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI答题 · 图文导览</title>
+<meta name="description" content="AI答题 v7.7.6 图文导览：四步上手、三层判定链、界面与悬浮窗、AI 引擎、题库与记忆库规则">
+<style>
+:root{
+  --bg:#f4f7fc; --surface:#ffffff; --line:#e2e8f0; --text:#0f172a; --muted:#475569;
+  --faint:#64748b; --brand:#2563eb; --brand-soft:#eff6ff; --shadow:0 10px 36px rgba(30,58,138,.09);
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#0b1220;--surface:#151f31;--line:#263449;--text:#e8eef9;--muted:#b3c1d6;
+        --faint:#8ba0bd;--brand:#7aa8ff;--brand-soft:#16243d;--shadow:0 10px 36px rgba(0,0,0,.35)}
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);
+  font-family:"Microsoft YaHei","PingFang SC","Hiragino Sans GB",system-ui,-apple-system,sans-serif;
+  -webkit-font-smoothing:antialiased;line-height:1.7}
+a{color:var(--brand);text-decoration:none}
+a:hover{text-decoration:underline}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+
+/* hero */
+.hero{position:relative;overflow:hidden;color:#fff;
+  background:linear-gradient(125deg,#1d4ed8 0%,#2563eb 42%,#6d28d9 100%)}
+.hero:before,.hero:after{content:"";position:absolute;border-radius:50%;pointer-events:none}
+.hero:before{width:520px;height:520px;right:-140px;top:-260px;background:rgba(255,255,255,.10)}
+.hero:after{width:380px;height:380px;left:-190px;bottom:-250px;background:rgba(255,255,255,.07)}
+.hero .wrap{position:relative;z-index:1;padding-top:56px;padding-bottom:52px}
+.kicker{display:inline-block;font-size:12px;letter-spacing:2.5px;font-weight:800;
+  background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);padding:6px 14px;border-radius:999px}
+.hero h1{font-size:clamp(38px,6vw,60px);line-height:1.15;margin:20px 0 12px;letter-spacing:-1px}
+.hero .lead{font-size:18px;max-width:720px;margin:0 0 26px;color:#dbeafe;line-height:1.75}
+.hero .lead b{color:#fff}
+.btns{display:flex;gap:12px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:11px 20px;border-radius:11px;
+  font-size:15px;font-weight:800;transition:transform .15s,box-shadow .15s}
+.btn:hover{transform:translateY(-2px);text-decoration:none}
+.btn-a{background:#fff;color:#1d4ed8;box-shadow:0 6px 18px rgba(0,0,0,.16)}
+.btn-b{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.45)}
+.facts{display:flex;gap:34px;flex-wrap:wrap;margin-top:34px;padding-top:24px;
+  border-top:1px solid rgba(255,255,255,.22)}
+.fact b{display:block;font-size:24px;line-height:1.2}
+.fact span{font-size:12.5px;color:#dbeafe}
+
+/* nav */
+nav{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--surface) 92%,transparent);
+  backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;gap:6px;overflow-x:auto;padding-top:9px;padding-bottom:9px;scrollbar-width:thin}
+nav a{white-space:nowrap;font-size:13.5px;font-weight:700;color:var(--muted);
+  padding:7px 13px;border-radius:8px}
+nav a:hover{background:var(--brand-soft);color:var(--brand);text-decoration:none}
+
+/* sections */
+section{padding:56px 0 8px;scroll-margin-top:62px}
+.eyebrow{font-size:12px;letter-spacing:2px;font-weight:800;color:var(--brand);margin-bottom:8px}
+h2{font-size:clamp(25px,3.6vw,34px);margin:0 0 10px;letter-spacing:-.5px;line-height:1.3}
+.lead{font-size:16px;color:var(--muted);margin:0 0 24px;max-width:820px}
+figure{margin:0 0 20px}
+figure a{display:block;border:1px solid var(--line);border-radius:16px;overflow:hidden;
+  box-shadow:var(--shadow);background:#fff;transition:transform .18s,box-shadow .18s}
+figure a:hover{transform:translateY(-3px);box-shadow:0 18px 46px rgba(30,58,138,.17)}
+figure img{display:block;width:100%;height:auto}
+figcaption{font-size:12.5px;color:var(--faint);margin-top:9px;text-align:center}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));gap:14px;margin:22px 0 8px}
+.c{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;
+  box-shadow:0 3px 14px rgba(30,58,138,.04)}
+.c b{display:block;font-size:15px;margin-bottom:6px}
+.c span{font-size:13.5px;color:var(--muted);line-height:1.7}
+.c .tag{display:inline-block;font-size:11px;font-weight:800;color:var(--brand);
+  background:var(--brand-soft);padding:3px 9px;border-radius:6px;margin-bottom:8px}
+.note{margin:20px 0 8px;padding:14px 18px;border-radius:12px;font-size:14px;line-height:1.8;
+  background:var(--brand-soft);border:1px solid color-mix(in srgb,var(--brand) 25%,transparent);color:var(--muted)}
+.note b{color:var(--text)}
+.docs{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin:8px 0 40px}
+.doc{display:block;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:17px 19px;
+  box-shadow:0 3px 14px rgba(30,58,138,.04);transition:transform .15s,border-color .15s}
+.doc:hover{transform:translateY(-3px);border-color:var(--brand);text-decoration:none}
+.doc b{display:block;color:var(--text);font-size:15.5px;margin-bottom:5px}
+.doc span{font-size:13px;color:var(--muted)}
+.doc em{display:block;font-style:normal;font-size:11.5px;color:var(--faint);margin-top:9px}
+footer{border-top:1px solid var(--line);padding:26px 0 40px;font-size:13px;color:var(--faint)}
+footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+@media(max-width:640px){.hero .wrap{padding-top:38px;padding-bottom:38px}.facts{gap:20px}section{padding-top:40px}}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="kicker">AI 答题 · v7.7.6</span>
+    <h1>看图就懂的答题助手</h1>
+    <p class="lead">安卓无障碍读屏 → 给出选项答案（可选自动点击）。<br>
+      三种答案来源按可靠性<b>依次短路</b>：<b>自选题库 → 本机记忆库 → AI 模型</b>。<br>
+      题库命中是毫秒级、不花额度；只开本地模型则可以全程离线。</p>
+    <div class="btns">
+      <a class="btn btn-a" href="https://github.com/2845199071/aianswer/releases/latest">↓ 下载 APK</a>
+      <a class="btn btn-b" href="https://github.com/2845199071/aianswer">查看源码 ↗</a>
+      <a class="btn btn-b" href="#s1">先看四步上手</a>
+    </div>
+    <div class="facts">
+      <div class="fact"><b>7 种</b><span>题库导入格式</span></div>
+      <div class="fact"><b>0 ms</b><span>题库 / 记忆库命中</span></div>
+      <div class="fact"><b>≥ 2 家</b><span>在线模型才可投票</span></div>
+      <div class="fact"><b>100%</b><span>可纯本地离线</span></div>
+    </div>
+  </div>
+</header>
+
+<nav><div class="wrap">
+  <a href="#s0">总览</a><a href="#s1">四步上手</a><a href="#s2">判定链</a>
+  <a href="#s3">界面与悬浮窗</a><a href="#s4">AI 引擎</a><a href="#s5">题库规则</a><a href="#s6">全部文档</a>
+</div></nav>
+
+<main class="wrap">
+
+<section id="s0">
+  <div class="eyebrow">00 / 总览</div>
+  <h2>一题只用最可靠的那个答案</h2>
+  <p class="lead">三种来源不是并行投票，而是按可靠性从高到低短路：上一层拿到可信答案，就不调用下一层。
+    这也是为什么<b>导入自己的题库</b>是最省时、最省额度、最准的用法。</p>
+  <figure>
+    <a href="images/overview.png" target="_blank" rel="noopener"><img src="images/overview.png" alt="三层答案来源总览"></a>
+    <figcaption>点击图片查看原图 · 三层来源与关键数字</figcaption>
+  </figure>
+  <div class="cards">
+    <div class="c"><span class="tag">权威</span><b>自选题库</b><span>你导入的原卷答案，按选项文本定位，选项乱序也不会点错。</span></div>
+    <div class="c"><span class="tag">积累</span><b>本机记忆库</b><span>AI 答过且审核通过的题，存完整选项原文，越用越快。</span></div>
+    <div class="c"><span class="tag">兜底</span><b>AI 模型</b><span>在线大模型与本地小模型，按题型路由、可多模型投票。</span></div>
+  </div>
+  <div class="note"><b>冲突不糊弄：</b>题库与记忆库答案不一致时，以题库为准，悬浮窗变红框、并排列出两方答案、<b>不自动点击</b>，
+    交给人核对，而不是再拉一个模型投票。悬浮球点「识别」可跳过前两层强制问模型。</div>
+</section>
+
+<section id="s1">
+  <div class="eyebrow">01 / 上手</div>
+  <h2>四步，五分钟能用</h2>
+  <p class="lead">先跑通「只给答案」，再按需要逐个打开自动化。自动点击、拟人点击、自动翻页、一句话解析<b>默认全部关闭</b>，
+    App 不会替你动手。</p>
+  <figure>
+    <a href="images/quickstart.png" target="_blank" rel="noopener"><img src="images/quickstart.png" alt="四步上手流程" loading="lazy"></a>
+    <figcaption>点击图片查看原图 · 安装 → 授权 → 选解题方式 → 开始答题</figcaption>
+  </figure>
+  <div class="cards">
+    <div class="c"><b>只开在线（最省事）</b><span>在线模型卡片 → 选服务商 → 粘贴 Key → 测试连接 ✓ → 开「读屏自动解题」。</span></div>
+    <div class="c"><b>只开本地（断网可用）</b><span>本地模型 → 模型市场下载 1.5B GGUF（约 1.07 GB，支持断点续传）→ 点「使用」。</span></div>
+    <div class="c"><b>有题库就先导入</b><span>题库 → 自选题库 → 上传。命中 0 次网络调用、毫秒级出答案，也不怕限流。</span></div>
+  </div>
+</section>
+
+<section id="s2">
+  <div class="eyebrow">02 / 判定链</div>
+  <h2>一题从头到尾怎么判</h2>
+  <p class="lead">读屏抓题干与选项文本 → 三层判定 → 输出。任何一层拿到可信答案就短路；
+    题库「命中但定位不到屏幕」不算命中，会继续往下走，题库答案只作为对照显示。</p>
+  <figure>
+    <a href="images/flow.png" target="_blank" rel="noopener"><img src="images/flow.png" alt="三层判定链流程" loading="lazy"></a>
+    <figcaption>点击图片查看原图 · 主判定链 + 四种特殊情况</figcaption>
+  </figure>
+  <div class="note"><b>防误命中：</b>题干相似度下限 <b>0.45</b>（同一份卷子相邻题常共用选项，只看选项分会点错）；
+    题干 ≥0.95 时豁免选项分。<b>倒计时</b>只认「剩余 12:30」，「已用 28:39 / 用时 03:20」是正计时，不会误触发抢答。</div>
+</section>
+
+<section id="s3">
+  <div class="eyebrow">03 / 界面</div>
+  <h2>界面与悬浮窗，一眼看懂</h2>
+  <p class="lead">悬浮窗第一行是答案，第二行写清楚<b>谁回答的 · 耗时 · 置信</b>；告警画在外框上，不占答案区。
+    悬浮球可拖动、长按换模式。</p>
+  <figure>
+    <a href="images/ui.png" target="_blank" rel="noopener"><img src="images/ui.png" alt="主界面与悬浮窗导览" loading="lazy"></a>
+    <figcaption>点击图片查看原图 · 主界面按钮清单、悬浮窗示意、三色告警</figcaption>
+  </figure>
+  <div class="cards">
+    <div class="c"><b>正常（蓝框 / 无告警）</b><span>一个来源、无分歧。投票一致或路由正常时不会啰嗦地写一堆来源。</span></div>
+    <div class="c"><b>黄框</b><span>有分歧或低置信，提醒留意，仍可能自动点击。</span></div>
+    <div class="c"><b>红框</b><span>两个来源答案打架或三方分歧：不会自动点击，下方并排列出另一方选项。</span></div>
+  </div>
+</section>
+
+<section id="s4">
+  <div class="eyebrow">04 / AI 引擎</div>
+  <h2>谁来答、多久算完、坏了怎么退</h2>
+  <p class="lead">优先级是<b>投票 &gt; 题型路由 &gt; 在线优先 / 本地优先</b>。路由规则是纯规则判定，宁可大不小；
+    熔断按 provider 隔离，在线失败会自动换下一家或降级到本地。</p>
+  <figure>
+    <a href="images/engine.png" target="_blank" rel="noopener"><img src="images/engine.png" alt="AI 引擎规则" loading="lazy"></a>
+    <figcaption>点击图片查看原图 · 路由表、投票预算、熔断、本地 logits 与解析</figcaption>
+  </figure>
+  <div class="note"><b>本地单选不生成：</b>一次 prefill 后直接读 A / B / C / D 四个 token 的末位 logits 取 argmax，
+    比逐 token 解码快 3~5 倍，也不会出现需要二次解析的长句子。投票总预算 9000 ms，倒计时抢答压到 4500 ms。</div>
+</section>
+
+<section id="s5">
+  <div class="eyebrow">05 / 题库规则</div>
+  <h2>记忆库与题库：怎么存、怎么验、冲突听谁的</h2>
+  <p class="lead">v7.6 起记忆库存的是<b>完整选项原文</b>而不是屏幕字母，命中时用「字母 → 文本 → 本次屏幕重新定位」，
+    所以选项换序照样能答对；v7.7 又补上了双来源冲突判定。</p>
+  <figure>
+    <a href="images/bank.png" target="_blank" rel="noopener"><img src="images/bank.png" alt="记忆库结构与冲突仲裁" loading="lazy"></a>
+    <figcaption>点击图片查看原图 · JSON 字段、四道校验、五级仲裁、撞题四种情况</figcaption>
+  </figure>
+  <div class="cards">
+    <div class="c"><b>四道校验</b><span>写入关 / 命中关 / 累计关 / 审核关；只有 v=true 且 mapped=true 才允许 0 ms 直出。</span></div>
+    <div class="c"><b>五级仲裁</b><span>用户手改过永不覆盖；答案分歧不覆盖，只记入候选；绝不自动改写题库。</span></div>
+    <div class="c"><b>撞题以题库为准</b><span>答案一致但选项不一致 → 按文本重定位；答案不一致 → 红框、不自动点击。</span></div>
+  </div>
+</section>
+
+<section id="s6">
+  <div class="eyebrow">06 / 全部文档</div>
+  <h2>想深入，看这些</h2>
+  <p class="lead">两份主文档覆盖了「怎么用」与「为什么这么做」，其余是各版本的设计与验证记录。全部随源码公开。</p>
+  <div class="docs">
+    <a class="doc" href="https://github.com/2845199071/aianswer/blob/main/docs/%E4%BD%BF%E7%94%A8%E6%95%99%E7%A8%8B.md">
+      <b>使用教程</b><span>安装授权、两条上手路径、导入格式、设置项逐条说明、常见问题</span><em>docs/使用教程.md ↗</em></a>
+    <a class="doc" href="https://github.com/2845199071/aianswer/blob/main/docs/%E5%8A%9F%E8%83%BD%E5%8E%9F%E7%90%86.md">
+      <b>功能原理</b><span>读屏、版面解析、判定链、冲突仲裁、路由投票、点击翻页的具体实现</span><em>docs/功能原理.md ↗</em></a>
+    <a class="doc" href="https://github.com/2845199071/aianswer/blob/main/docs/%E9%9C%80%E6%B1%82%E8%A7%84%E6%A0%BC%E8%AF%B4%E6%98%8E%E4%B9%A6-v7.1.md">
+      <b>需求规格说明书 v7.1</b><span>冲突仲裁、解析、路由、投票、模型市场、权限与技术选型</span><em>docs/需求规格说明书-v7.1.md ↗</em></a>
+    <a class="doc" href="https://github.com/2845199071/aianswer/blob/main/docs/%E8%87%AA%E9%80%89%E9%A2%98%E5%BA%93%E9%9B%86%E6%88%90%E8%AF%B4%E6%98%8E.md">
+      <b>自选题库集成说明</b><span>从「刷题助手·固定题库版」移植的解析与命中逻辑</span><em>docs/自选题库集成说明.md ↗</em></a>
+    <a class="doc" href="https://github.com/2845199071/aianswer/blob/main/docs/v7.6-%E8%AE%B0%E5%BF%86%E5%BA%93%E9%80%89%E9%A1%B9%E5%AD%98%E5%82%A8.md">
+      <b>v7.6 选项存储设计</b><span>op / os 字段、按文本重定位、四道有效性校验</span><em>docs/v7.6-记忆库选项存储.md ↗</em></a>
+    <a class="doc" href="https://github.com/2845199071/aianswer/blob/main/docs/v7.7-%E5%8F%8C%E6%9D%A5%E6%BA%90%E5%88%A4%E5%AE%9A%E4%B8%8E%E8%87%AA%E5%8A%A8%E7%BF%BB%E9%A1%B5.md">
+      <b>v7.7 双来源与自动翻页</b><span>题库/记忆库冲突判定、自动选择题与点下一题</span><em>docs/v7.7-双来源判定与自动翻页.md ↗</em></a>
+  </div>
+</section>
+
+</main>
+
+<footer><div class="wrap">
+  <span>AI答题 v7.7.6 · 图片与说明依据当前源码绘制 · 点击任意图片可看原图</span>
+  <span><a href="https://github.com/2845199071/aianswer">GitHub 仓库 ↗</a>　·　<a href="https://github.com/2845199071/aianswer/releases/latest">下载最新版 ↗</a></span>
+</div></footer>
+
+</body>
+</html>

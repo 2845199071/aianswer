@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  可点设置项底框：浅灰圆角块 + 品牌色水波纹。
+
+  和 set_item 同一套观感，但带按压反馈——悬浮窗的长按菜单每一项都是「点一下执行」，
+  没有波纹的话用户只能靠弹窗关掉与否猜自己点没点上。
+-->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/brand_ripple">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/bg_field" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+</ripple>
