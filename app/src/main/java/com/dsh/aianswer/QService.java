@@ -99,7 +99,7 @@ public class QService extends AccessibilityService {
                 // 下一题留给用户自己决定。之前这里没检查开关，手动点一次就一路自动做下去。
                 h.removeCallbacks(fire);
                 if (Prefs.autoAnswer(QService.this)) {
-                    h.postDelayed(fire, 700);
+                    h.postDelayed(fire, 500);
                 }
             } else {
                 Log.i(TAG, "「下一题」点击失败");
@@ -117,7 +117,7 @@ public class QService extends AccessibilityService {
     };
 
     // ---- 自动读题的「什么时候读」节流（v7.7.25）----
-    private static final long SCAN_MIN_ACTIVE_MS = 600;   // 两次全树扫描的最小间隔（合并事件风暴）
+    private static final long SCAN_MIN_ACTIVE_MS = 300;   // 两次全树扫描的最小间隔（合并事件风暴；刚切页不受限）
     private static final int QUIET_STREAK_LIMIT = 4;      // 同一包连续这么多次「不像题」→ 进入冷包退避
     private static final long PKG_COOLDOWN_MS = 3000;     // 冷包退避时长：3 秒内不再全树扫描
     private long lastScanAt = 0;                          // 上次完整扫描时刻
@@ -222,7 +222,7 @@ public class QService extends AccessibilityService {
         if (winSwitch) lastWinSwitchAt = System.currentTimeMillis();   // 切页 = 强信号
         h.removeCallbacks(fire);
         // 切窗口 150ms 就读（用户换页了，要快）；页面内容变化 400ms 合并一波（输入/动画/倒计时全在里面）
-        h.postDelayed(fire, winSwitch ? 150 : 400);
+        h.postDelayed(fire, winSwitch ? 150 : 300);
     }
 
     /** App 里点「悬浮窗：显示中」→ 收起。 */
@@ -897,6 +897,8 @@ public class QService extends AccessibilityService {
         // ② 冷包退避：同一个 App 连续几次都读不出题目（聊天页/桌面/视频）→ 3 秒内不再全树扫描。
         //    刚发生窗口切换（用户换了页面）则立刻放行，换 App 必须马上能读到题。
         boolean freshSwitch = now - lastWinSwitchAt < 1200;
+        // 刚切页/刚翻页：新题第一眼立即扫，不吃最小间隔和冷包退避
+        if (!verify && !freshSwitch && now - lastScanAt < SCAN_MIN_ACTIVE_MS) return;
         if (!verify && !freshSwitch && now < pkgCooldownUntil) return;
         lastScanAt = now;
 
@@ -974,10 +976,10 @@ public class QService extends AccessibilityService {
 
         // 答案刚出来时给页面一点静默期。倒计时、进度条这类每秒变化的元素会不断产生
         // CONTENT_CHANGED 事件，不拦一下就会出现"刚显示答案立刻又开始思考"
-        if (System.currentTimeMillis() - lastAnswerAt < 1200) {
+        if (System.currentTimeMillis() - lastAnswerAt < 800) {
             h.removeCallbacks(fire);
             if (Prefs.autoAnswer(this)) {
-                h.postDelayed(fire, 600);
+                h.postDelayed(fire, 400);
             }
             return;
         }
@@ -1350,7 +1352,7 @@ public class QService extends AccessibilityService {
         // 刷题助手靠「每拍重新读屏 + 失败重试」解决，这里用更省事的办法：等久一点。
         boolean justFlipped = System.currentTimeMillis() - lastNextAt < 2500;
         long clickDelay = human() ? 160 + new java.util.Random().nextInt(180) : 120;
-        if (justFlipped) clickDelay = 700;
+        if (justFlipped) clickDelay = 400;
         h.postDelayed(new Runnable() {
             public void run() { clickLetters(r, toClick); }
         }, clickDelay);
