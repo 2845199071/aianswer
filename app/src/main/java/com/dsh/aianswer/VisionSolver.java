@@ -31,7 +31,8 @@ public final class VisionSolver {
     private static final String TAG = "AIQ";
 
     private static final int CONNECT_TIMEOUT_MS = 8000;
-    private static final int READ_TIMEOUT_MS = 20000;   // 关掉思考后 2~4 秒就该回来，卡住就别干等
+    private static final int READ_TIMEOUT_MS = 20000;   // 不开思考 2~4 秒就该回来，卡住就别干等
+    private static final int THINK_READ_TIMEOUT_MS = 30000;   // 思考重试一轮可能要十几秒
     private static final int MAX_SIDE = 1400;      // 够看清符号，又不至于把 token 撑爆
     private static final int JPEG_QUALITY = 78;         // 文字仍然清晰，上传体积少三成
 
@@ -111,10 +112,17 @@ public final class VisionSolver {
      * @param pkg 当前页面包名，用来缓存「题目区域」；传空则一律整屏
      */
     public static Result ask(Context ctx, Bitmap bmp, String pkg) {
-        return run(ctx, bmp, pkg);
+        return ask(ctx, bmp, pkg, false);
     }
 
-    private static Result run(Context ctx, Bitmap bmp, String pkg) {
+    /**
+     * @param preferThinking true = 手动「识别」：第一次就开思考（用户主动要求复核，准确优先）
+     */
+    public static Result ask(Context ctx, Bitmap bmp, String pkg, boolean preferThinking) {
+        return run(ctx, bmp, pkg, preferThinking);
+    }
+
+    private static Result run(Context ctx, Bitmap bmp, String pkg, boolean preferThinking) {
         Result r = new Result();
         long t0 = System.currentTimeMillis();
         CloudSolver.Provider p = pick(ctx);
@@ -155,7 +163,7 @@ public final class VisionSolver {
         }
 
         try {
-            r = request(ctx, p, base, key, send, ox, oy, r);
+            r = request(ctx, p, base, key, send, ox, oy, r, preferThinking);
 
             // 这道题可能比校准区域更高（选项折行、题干很长）：内容贴边就说明被切了，
             // 立刻用「上下各放宽一截」的区域重发一次。只在贴边时才多花这一次调用。
@@ -168,7 +176,7 @@ public final class VisionSolver {
                         cut2 = Bitmap.createBitmap(bmp, big.l, big.t, big.w, big.h);
                         Result r2 = new Result();
                         r2.source = r.source;
-                        r2 = request(ctx, p, base, key, cut2, big.l, big.t, r2);
+                        r2 = request(ctx, p, base, key, cut2, big.l, big.t, r2, preferThinking);
                         if (r2.error == null) {
                             r2.cropped = true;
                             r = r2;
@@ -194,7 +202,7 @@ public final class VisionSolver {
                 }
                 Result r2 = new Result();
                 r2.source = r.source;
-                r2 = request(ctx, p, base, key, bmp, 0, 0, r2);
+                r2 = request(ctx, p, base, key, bmp, 0, 0, r2, preferThinking);
                 r2.cropped = false;
                 r = r2;
             } else if (crop != null && r.error == null) {
@@ -214,7 +222,7 @@ public final class VisionSolver {
 
     /** 真正发请求 + 解析。ox/oy 是这张图相对整屏的偏移，用来把选项坐标还原成屏幕坐标。 */
     private static Result request(Context ctx, CloudSolver.Provider p, String base, String key,
-                                  Bitmap src, int ox, int oy, Result r) {
+                                  Bitmap src, int ox, int oy, Result r, boolean preferThinking) {
         try {
             byte[] jpg = toJpeg(src);
             String b64 = android.util.Base64.encodeToString(jpg, android.util.Base64.NO_WRAP);
@@ -226,25 +234,24 @@ public final class VisionSolver {
             body.put("temperature", 0.01);
 
             /*
-             * 思考模式：**开，但只给 low**。
-             *
-             * 关掉思考时单题 1.3 秒，但遇到「某项作业依据哪个标准」这种概念辨析题会选错 ——
-             * 实测它挑了个更知名但不适用的国标，而正确答案是另一个专项标准。
-             * 这类题不需要长篇推理，只需要「想清楚问的是什么」，low 就够，代价约 1 秒。
-             *
-             * 注意：思考 token 计入 max_tokens，所以开着思考时必须把额度提上去，
-             * 否则额度被思考吃光、正文为空（仍然计费）。
+             * 两段式（v7.7.28）：
+             *   第一段【不开思考】——快、便宜、JSON 一定完整。思考 token 计入 max_tokens，
+             *   遇到要翻法条的题思考能写 6000+ 字，额度被吃光后 content 就是空的，
+             *   整题必然失败（实测 max_tokens 3000 都不够）。不开思考 500~800 额度就够，
+             *   绝大多数题一遍过。
+             *   第二段【开思考、额度 8000、读超时放宽】——只在第一段没给出答案时触发，
+             *   只对 DeepSeek 开（其他厂商没有思考参数）。
+             * 手动「识别」（preferThinking）第一次就开思考：用户主动要求复核，准确优先。
              */
             String pid = p.id == null ? "" : p.id.toLowerCase();
-            boolean think = pid.contains("deepseek");
+            boolean deepseek = pid.contains("deepseek");
+            boolean think = preferThinking && deepseek;
             if (think) {
                 body.put("thinking", new JSONObject().put("type", "enabled"));
                 body.put("reasoning_effort", "low");
-                // 思考 token 计入 max_tokens：思考被截断时 content 就是空的（整题失败）。
-                // 实测罚款类题思考能写 6000+ 字，1400 必然不够，3000 才能让 JSON 出来。
-                body.put("max_tokens", 3000);
+                body.put("max_tokens", 8000);
             } else {
-                body.put("max_tokens", 400);
+                body.put("max_tokens", deepseek ? 800 : 400);
             }
 
             JSONArray content = new JSONArray();
@@ -256,7 +263,7 @@ public final class VisionSolver {
             body.put("messages", msgs);
 
             long tNet = System.currentTimeMillis();
-            String resp = post(base, key, body.toString());
+            String resp = post(base, key, body.toString(), READ_TIMEOUT_MS);
             Log.i(TAG, "视觉请求 " + (System.currentTimeMillis() - tNet) + "ms · 图 "
                     + (b64.length() / 1024) + "KB · " + src.getWidth() + "x" + src.getHeight()
                     + ((ox > 0 || oy > 0) ? "（裁剪）" : "（整屏）")
@@ -268,6 +275,33 @@ public final class VisionSolver {
             r.raw = text;
             saveRaw(ctx, text, ox > 0 || oy > 0);
             parse(text, src.getWidth(), src.getHeight(), ox, oy, r);
+
+            // 第一段没给出答案（多为思考把额度吃光、content 为空）→ 开思考重试一次
+            if (r.answer.isEmpty() || r.error != null) {
+                r.question = "";
+                r.type = "";
+                r.answer = "";
+                r.why = "";
+                r.options.clear();
+                r.error = null;
+                if (deepseek) {
+                    body.put("thinking", new JSONObject().put("type", "enabled"));
+                    body.put("reasoning_effort", "low");
+                }
+                body.put("max_tokens", deepseek ? 8000 : 2000);
+                long t2 = System.currentTimeMillis();
+                String resp2 = post(base, key, body.toString(), THINK_READ_TIMEOUT_MS);
+                JSONObject msg2 = new JSONObject(resp2).getJSONArray("choices").getJSONObject(0)
+                        .getJSONObject("message");
+                String text2 = msg2.optString("content", "");
+                if (text2 == null || text2.trim().isEmpty()) text2 = msg2.optString("reasoning_content", "");
+                r.raw = text2;
+                saveRaw(ctx, text2, ox > 0 || oy > 0);
+                parse(text2, src.getWidth(), src.getHeight(), ox, oy, r);
+                if (r.answer.isEmpty() && r.error == null) r.error = "模型思考过长，没给出答案";
+                Log.i(TAG, "视觉思考重试 " + (System.currentTimeMillis() - t2) + "ms · "
+                        + (r.error == null ? "成功" : r.error));
+            }
             if (r.answer.isEmpty() && r.error == null) r.error = "模型没给出答案";
         } catch (HttpError he) {
             r.error = he.getMessage();
@@ -500,12 +534,12 @@ public final class VisionSolver {
         return bo.toByteArray();
     }
 
-    private static String post(String base, String key, String json) throws Exception {
+    private static String post(String base, String key, String json, int readTimeoutMs) throws Exception {
         String url = base.endsWith("/") ? base + "chat/completions" : base + "/chat/completions";
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         c.setRequestMethod("POST");
         c.setConnectTimeout(CONNECT_TIMEOUT_MS);
-        c.setReadTimeout(READ_TIMEOUT_MS);
+        c.setReadTimeout(readTimeoutMs);
         c.setDoOutput(true);
         c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
         c.setRequestProperty("Authorization", "Bearer " + key);

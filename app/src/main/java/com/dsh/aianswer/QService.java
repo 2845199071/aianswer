@@ -407,7 +407,8 @@ public class QService extends AccessibilityService {
                     public void run() {
                         // 直接把图交给模型「读题 + 答题」：一次调用拿全题干/选项/题型/答案。
                         // 拿到答案后仍走 onVisionAuto → handle：题库/记忆库优先，没命中才用视觉答案。
-                        final VisionSolver.Result vr = VisionSolver.ask(QService.this, b, pkg);
+                        // 手动「识别」= 用户主动要求复核：第一次就开思考，准确优先
+                        final VisionSolver.Result vr = VisionSolver.ask(QService.this, b, pkg, true);
                         try { b.recycle(); } catch (Throwable ignored) { }   // 这一帧不落盘，用完即弃
                         h.post(new Runnable() {
                             public void run() { onVisionAuto(vr, pkg, verify); }
