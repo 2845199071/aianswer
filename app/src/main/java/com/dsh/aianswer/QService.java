@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.util.Log;
 import android.view.accessibility.AccessibilityEvent;
 import java.util.ArrayList;
@@ -115,6 +116,17 @@ public class QService extends AccessibilityService {
         public void run() { tick(); }
     };
 
+    // ---- 自动读题的「什么时候读」节流（v7.7.25）----
+    private static final long SCAN_MIN_ACTIVE_MS = 600;   // 两次全树扫描的最小间隔（合并事件风暴）
+    private static final int QUIET_STREAK_LIMIT = 4;      // 同一包连续这么多次「不像题」→ 进入冷包退避
+    private static final long PKG_COOLDOWN_MS = 3000;     // 冷包退避时长：3 秒内不再全树扫描
+    private long lastScanAt = 0;                          // 上次完整扫描时刻
+    private long lastWinSwitchAt = 0;                     // 上次窗口切换时刻（切页是强信号，绕过冷包退避）
+    private long pkgCooldownUntil = 0;                    // 冷包退避截止时刻
+    private String lastPkg = "";                          // 上一前台包名
+    private int quietStreak = 0;                          // 同一包连续「不像题」的次数
+    private PowerManager pm;
+
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
@@ -201,8 +213,16 @@ public class QService extends AccessibilityService {
         CharSequence pk = e.getPackageName();
         if (pk != null && SELF_PKG.contentEquals(pk)) return;
         if (AnswerEngine.get().isBusy()) return;
+
+        // 熄屏 / 锁屏：没有题可读，也别在后台反复唤醒自己
+        if (pm == null) pm = (PowerManager) getSystemService(POWER_SERVICE);
+        if (pm != null && !pm.isInteractive()) return;
+
+        boolean winSwitch = t == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED;
+        if (winSwitch) lastWinSwitchAt = System.currentTimeMillis();   // 切页 = 强信号
         h.removeCallbacks(fire);
-        h.postDelayed(fire, 400);
+        // 切窗口 150ms 就读（用户换页了，要快）；页面内容变化 400ms 合并一波（输入/动画/倒计时全在里面）
+        h.postDelayed(fire, winSwitch ? 150 : 400);
     }
 
     /** App 里点「悬浮窗：显示中」→ 收起。 */
@@ -870,6 +890,16 @@ public class QService extends AccessibilityService {
             return;
         }
 
+        long now = System.currentTimeMillis();
+        // ① 两次全树扫描至少间隔 600ms：倒计时、动画、输入法每几十毫秒就来一次事件，
+        //    不拦的话全树遍历会被反复触发。手动「识别」不受限。
+        if (!verify && now - lastScanAt < SCAN_MIN_ACTIVE_MS) return;
+        // ② 冷包退避：同一个 App 连续几次都读不出题目（聊天页/桌面/视频）→ 3 秒内不再全树扫描。
+        //    刚发生窗口切换（用户换了页面）则立刻放行，换 App 必须马上能读到题。
+        boolean freshSwitch = now - lastWinSwitchAt < 1200;
+        if (!verify && !freshSwitch && now < pkgCooldownUntil) return;
+        lastScanAt = now;
+
         ScreenScan.Result r;
         try {
             r = ScreenScan.scan(this);
@@ -885,8 +915,20 @@ public class QService extends AccessibilityService {
             int n = r == null ? 0 : r.texts.size();
             // 默认路线：截图直接交给视觉模型读题答题。
             // OCR 退成兜底 —— 只在没配视觉模型时才用。
-            if (tryVision(verify, r)) return;
-            if (tryOcr(verify, r)) return;
+            boolean handled = tryVision(verify, r);
+            if (!handled) handled = tryOcr(verify, r);
+            if (handled) { quietStreak = 0; return; }
+
+            // 兜底也没接手：这个页面就是不像题。同一包连续 4 次 → 冷包退避 3 秒，
+            // 别在聊天页/桌面上一次事件一次全树扫描。
+            String curPkg = r == null ? "" : (r.pkg == null ? "" : r.pkg);
+            quietStreak = curPkg.equals(lastPkg) ? quietStreak + 1 : 0;
+            lastPkg = curPkg;
+            if (quietStreak >= QUIET_STREAK_LIMIT) {
+                pkgCooldownUntil = System.currentTimeMillis() + PKG_COOLDOWN_MS;
+                quietStreak = 0;
+                Log.i(TAG, "冷包退避 " + curPkg + " · 3 秒内不再全树扫描");
+            }
             if (n == 0) {
                 // 读屏一个字都没读到：多半是自绘页面。这时截图兜底为什么没接手，要说明白，
                 // 否则用户点「识别」也没用（手动路径不受限，能出答案；但下一题又卡住）。
