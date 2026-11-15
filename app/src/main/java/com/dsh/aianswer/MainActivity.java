@@ -196,6 +196,7 @@ public class MainActivity extends Activity {
                 if (binding) return;
                 Prefs.setAutoAnswer(MainActivity.this, on);
                 QService.resetAutoPause();     // 暂停只属于自动模式，切模式时清掉
+                QService.resetAutoState();     // 回到「未开始」：下次要用再按悬浮窗「开始」
                 QService.refreshOverlay();
             }
         });

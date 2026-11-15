@@ -50,6 +50,8 @@ public class QService extends AccessibilityService {
     private volatile boolean hurryMode = false;   // 屏幕上检测到倒计时：少问几家、快点出
     /** 悬浮窗点一下 = 临时暂停/恢复自动模式。只拦「自动动作」，开关本身不变，手动点「识别」仍然可用。 */
     private static volatile boolean autoPaused = false;
+    /** 自动模式是否已按「开始」。开关打开只是选了模式，按下开始才真正读题（用户明确要求）。 */
+    private static volatile boolean autoStarted = false;
     private volatile boolean visionBusy = false;  // 视觉（截图直发模型）进行中
     private long lastVisionAt = 0;                // 两次视觉调用的最小间隔
     private volatile String lastVisionQ = "";     // 上一轮视觉答过的题（归一化），用于同题判重
@@ -275,23 +277,6 @@ public class QService extends AccessibilityService {
     }
 
     /**
-     * 「读屏完全空白」也算候选页。
-     *
-     * <p>小程序 / Canvas 自绘页面的无障碍树就是空的（v7.7.7 起靠截图识别解这类页面）。
-     * 以前 looksLikeQuiz 要求「至少 3 段文字」，而这类页面一段都读不到 ——
-     * 结果两条截图兜底全被同一个判定挡死，自动模式永远停在「读屏没拿到内容」，
-     * 只有用户手动点「识别」（verify）才放行。测试机复现：题目文字明明画在屏幕上。
-     *
-     * <p>空白页分不清是答题页还是聊天页，所以**只用于自动模式的截图兜底**，
-     * 且调用方先排除系统界面 / 桌面（launcher 会被 pickRoot 拿到一堆图标文字，
-     * texts 一般不为空，不会落进这个分支）。
-     */
-    private static boolean looksLikeQuizOrBlank(ScreenScan.Result r) {
-        if (r != null && r.texts != null && r.texts.isEmpty() && !skipPkg(r.pkg)) return true;
-        return looksLikeQuiz(r);
-    }
-
-    /**
      * 页面像不像答题页。
      *
      * <p>「读屏认不出选项」不等于「这是答题页」——微信聊天、桌面、设置页同样认不出。
@@ -338,7 +323,11 @@ public class QService extends AccessibilityService {
         if (!VisionSolver.available(this)) return false;     // 没配视觉模型 → 交给 OCR 兜底
         // 不像答题页就不截（防止在聊天页/桌面乱上传）；但用户手动点「识别」时例外 ——
         // 读屏完全读不到内容时，用户点这一下就是明确要求「看图答题」。
-        if (!looksLikeQuizOrBlank(r) && !verify) return false;
+        // 空白页豁免只在「已按开始」的自动模式生效：读屏 0 段文字 = 自绘页面，靠截图兜底。
+        // 没按开始就什么都不做（开关打开 ≠ 立刻开始识别，见 tick）。
+        boolean blankOk = Prefs.autoAnswer(this) && autoStarted && !autoPaused
+                && r != null && r.texts != null && r.texts.isEmpty();
+        if (!looksLikeQuiz(r) && !verify && !blankOk) return false;
 
         long now = System.currentTimeMillis();
         if (visionBusy) return true;
@@ -378,8 +367,9 @@ public class QService extends AccessibilityService {
                 final Bitmap b = bmp;
                 new Thread(new Runnable() {
                     public void run() {
-                        // 只读题、不判断答案：答案交给题库和文本模型（视觉看着图答更容易错）
-                        final VisionSolver.Result vr = VisionSolver.read(QService.this, b, pkg);
+                        // 直接把图交给模型「读题 + 答题」：一次调用拿全题干/选项/题型/答案。
+                        // 拿到答案后仍走 onVisionAuto → handle：题库/记忆库优先，没命中才用视觉答案。
+                        final VisionSolver.Result vr = VisionSolver.ask(QService.this, b, pkg);
                         try { b.recycle(); } catch (Throwable ignored) { }   // 这一帧不落盘，用完即弃
                         h.post(new Runnable() {
                             public void run() { onVisionAuto(vr, pkg, verify); }
@@ -455,13 +445,15 @@ public class QService extends AccessibilityService {
         }
         Log.i(TAG, "视觉读题 " + r.options.size() + " 个选项 / 题型 " + (tp.isEmpty() ? "未知" : tp)
                 + " / " + vr.ms + "ms → 交给题库和模型判定");
-        // 走和读屏完全一样的判定链：自选题库 → 记忆库 → 文本模型
-        handle(r, verify);
+        // 走和读屏完全一样的判定链：自选题库 → 记忆库 → （都没命中）采用视觉答案
+        handle(r, verify, vr.answer);
     }
 
     private boolean tryOcr(boolean verify, ScreenScan.Result r) {
         if (!OcrEngine.supported()) return false;
-        if (!looksLikeQuizOrBlank(r)) return false;           // 不像答题页，绝不截图
+        boolean blankOk = Prefs.autoAnswer(this) && autoStarted && !autoPaused
+                && r != null && r.texts != null && r.texts.isEmpty();
+        if (!looksLikeQuiz(r) && !verify && !blankOk) return false;   // 不像答题页，绝不截图
         long now = System.currentTimeMillis();
         if (ocrBusy) return true;
         // 刚在同一个页面答完题，接下来几秒页面通常只是变成「结果页」——
@@ -744,6 +736,32 @@ public class QService extends AccessibilityService {
 
     public static boolean isAutoPaused() { return autoPaused; }
 
+    public static boolean isAutoStarted() { return autoStarted; }
+
+    /** 悬浮窗「开始」：打开开关只是选了模式，按下这个才真正开始自动读题。 */
+    public static void startAuto() {
+        autoStarted = true;
+        autoPaused = false;
+        final QService s = sInst;
+        if (s != null) {
+            s.lastSig = "";                       // 别让「已就绪」的占位签名挡住第一题
+            s.h.removeCallbacks(s.fire);
+            s.h.post(s.fire);                     // 立刻扫一次，不用等下一次界面事件
+            Overlay.get(s).refreshScanButton();
+        }
+    }
+
+    /** 关掉「读屏自动解题」开关时调用：回到「未开始」，下次要用再按「开始」。 */
+    public static void resetAutoState() {
+        autoStarted = false;
+        autoPaused = false;
+        final QService s = sInst;
+        if (s != null) {
+            s.h.removeCallbacks(s.fire);
+            Overlay.get(s).refreshScanButton();
+        }
+    }
+
     /** 切换自动/手动模式时调用：暂停概念只属于自动模式，切走就清掉，免得状态残留。 */
     public static void resetAutoPause() {
         autoPaused = false;
@@ -832,6 +850,15 @@ public class QService extends AccessibilityService {
         verifyBank = false;
         // 悬浮窗点一下暂停的自动模式：自动题不跑；手动点「识别」（verify）仍然作答
         if (autoPaused && !verify) return;
+        // 打开开关只是选了模式；必须按悬浮窗上的「开始」才真正开始自动读题
+        if (Prefs.autoAnswer(this) && !autoStarted && !verify) {
+            if (!"__await_start__".equals(lastSig)) {
+                lastSig = "__await_start__";
+                Overlay.get(this).update("已就绪", "点悬浮窗上的「开始」开始自动读题",
+                        "手动「识别」不受影响，随时可点");
+            }
+            return;
+        }
 
         boolean cloudOk = Prefs.cloudOn(this) && Prefs.cloudReady(this, Prefs.provider(this));
         boolean localOk = Prefs.localOn(this) && AnswerEngine.get().ready();
@@ -883,6 +910,14 @@ public class QService extends AccessibilityService {
      * 读屏拿到的和图片识别拿到的都从这里往下走，所以题库、记忆库、路由、投票全都照常生效。
      */
     private void handle(ScreenScan.Result r, boolean verify) {
+        handle(r, verify, null);
+    }
+
+    /**
+     * @param preset 截图兜底已经拿到的视觉答案（可空）。题库/记忆库都没命中时直接采用，
+     *               不再二次调用文本模型 —— 截图路径一次调用就出结果。
+     */
+    private void handle(ScreenScan.Result r, boolean verify, String preset) {
         if (skipPkg(r.pkg)) return;   // 切到系统界面或本 App：正常场景，不打扰
 
         final String q = Layout.stripDynamic(r.question == null ? "" : r.question);
@@ -1015,6 +1050,18 @@ public class QService extends AccessibilityService {
             bankMissNote[0] = "记忆库：" + bankEntry.a
                     + (bankEntry.opts.isEmpty() ? "（旧记录没有选项内容，本次重新核对）"
                                                 : "（选项对不上，本次未采用）");
+        }
+
+        // 截图兜底已经把答案拿回来了：题库/记忆库都没命中就直接采用，不再烧第二次调用
+        if (preset != null && !preset.isEmpty()) {
+            AnswerEngine.Result hit = new AnswerEngine.Result();
+            hit.letters = preset;
+            hit.conf = 0.95f;
+            hit.source = "视觉模型";
+            hit.answeredBy = "看图回答（截图直接交给模型）";
+            hit.ms = 0;
+            onAnswer(r, hit, q, sig, false, bankMissNote[0]);
+            return;
         }
 
         if (bankEntry != null && bankEntry.hasConflict()) {

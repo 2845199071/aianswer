@@ -132,7 +132,14 @@ public final class Overlay {
                     return;
                 }
                 if (Prefs.autoAnswer(ctx)) {
-                    // 自动模式：这个按钮 = 暂停/继续。开关一个都不动，只是临时停一停。
+                    // 自动模式：没按过「开始」→ 这个按钮就是开始；按过之后才是 暂停/继续。
+                    if (!QService.isAutoStarted()) {
+                        QService.startAuto();
+                        refreshScanButton();
+                        applyPauseState(false);
+                        update("自动读题中…", "正在等下一道题出现在屏幕上");
+                        return;
+                    }
                     boolean paused = QService.toggleAutoPause();
                     refreshScanButton();
                     applyPauseState(paused);
@@ -363,19 +370,27 @@ public final class Overlay {
     }
 
     /**
-     * 右上角按钮的三种形态：
-     * 自动解题开 + 运行中 →「暂停」（点了临时停下，不动开关）
-     * 自动解题开 + 已暂停 →「继续」（点了接着跑）
-     * 自动解题关          →「识别」（手动答一次）
+     * 右上角按钮的四种形态：
+     * 自动解题开 + 未按开始 →「开始」（实心蓝，按下才进入自动读题；开关打开不等于开始）
+     * 自动解题开 + 运行中   →「暂停」（点了临时停下，不动开关）
+     * 自动解题开 + 已暂停   →「继续」（点了接着跑）
+     * 自动解题关            →「识别」（手动答一次）
      */
-    private void refreshScanButton() {
+    public void refreshScanButton() {
         if (btnScan == null) return;
         GradientDrawable bg = new GradientDrawable();
         bg.setCornerRadius(dp(BTN_DP / 2));
         if (Prefs.autoAnswer(ctx)) {
+            btnScan.setEnabled(true);
+            if (!QService.isAutoStarted()) {
+                btnScan.setText("开始");
+                bg.setColor(0xFF2F6BFF);                        // 实心蓝：当前最该按的按钮
+                btnScan.setBackground(bg);
+                btnScan.setTextColor(0xFFFFFFFF);
+                return;
+            }
             boolean paused = QService.isAutoPaused();
             btnScan.setText(paused ? "继续" : "暂停");
-            btnScan.setEnabled(true);
             bg.setColor(paused ? 0xFFFDF4E7 : C_SOFT);          // 暂停中橙底，一眼看出停了
             btnScan.setBackground(bg);
             btnScan.setTextColor(paused ? 0xFF8A4B0F : C_PRIMARY);

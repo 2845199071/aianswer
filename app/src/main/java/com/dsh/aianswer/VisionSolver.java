@@ -43,28 +43,30 @@ public final class VisionSolver {
      * 让视觉只做它擅长的（把图读成字），判断交给题库和文本模型，两层都更准，
      * 而且**你导入的题库终于能参与**（之前视觉直接给答案，把题库整个绕过了）。
      */
-    private static final String PROMPT_READ =
-            "这是一道选择题的截图。请只做两件事：\n"
-            + "1. 读出题干。忽略广告、会员推广、底部统计、页码进度（如 41/112）、"
-            + "「单选/多选」标签和手机状态栏，这些都不是题目内容。\n"
-            + "2. 读出每个选项的字母和文字，**原样抄写**，符号不要改（≤ ≥ ± ℃ mm 等）。\n"
-            + "不要判断答案。只输出 JSON，不要解释，不要 markdown 代码块：\n"
-            + "{\"q\":\"题干\",\"type\":\"单选或多选或判断\","
-            + "\"opts\":[{\"l\":\"A\",\"t\":\"选项文字\",\"box\":[x1,y1,x2,y2]}]}\n"
-            + "type 按页面上标注的题型填：有「多选」「不定项」字样填 多选；有「判断」填 判断；其余填 单选。\n"
-            + "box 是该选项**整行**（字母 + 全部文字）的矩形，用 0 到 1000 的相对坐标，原点左上角；不确定可以省略。";
-
+    /**
+     * 截图直接交给模型**读题并答题**（v7.7.24 定稿，用户审核通过的版本）。
+     *
+     * <p>和旧版「只读题」的区别：一次调用就把题干、选项、题型、答案全拿回来，
+     * 不再先抄字再让文本模型猜一遍。题型判断写在第一步，多选必须给组合、
+     * 判断题按「正确/错误」的字母给 —— 否则多选会只点一个、判断题会答反。
+     */
     private static final String PROMPT =
-            "这是一道选择题的截图。请完成三件事：\n"
-            + "1. 读出题干。忽略广告、会员推广、底部统计、页码进度（如 41/112）、"
+            "这是一张题目页面的截图，可能是单选题、多选题或判断题。请按顺序完成：\n"
+            + "1. 先判断题型：页面标了「多选」或「不定项」就是多选；标了「判断」、或者选项只有"
+            + "「正确 / 错误（对 / 错）」两个，就是判断题；其余是单选。\n"
+            + "2. 读出题干。忽略广告、会员推广、底部统计、页码进度（如 41/112）、"
             + "「单选/多选」标签和手机状态栏，这些都不是题目内容。\n"
-            + "2. 读出每个选项的字母和文字，**符号原样保留**（≤ ≥ ± ℃ mm 等）。\n"
-            + "3. 判断正确答案。\n"
+            + "3. 读出每个选项的字母和文字，**符号原样保留**（≤ ≥ ± ℃ mm 等）。"
+            + "判断题也要把「正确 / 错误」两个选项原样列出。\n"
+            + "4. 按题型给答案：\n"
+            + "· 单选：只给一个字母；\n"
+            + "· 多选：给出所有正确选项的字母组合（如 \"ABD\"，一个都不要漏）；\n"
+            + "· 判断：给「正确」或「错误」对应的字母（通常 A=正确、B=错误，以页面实际顺序为准）。\n"
             + "只输出 JSON，不要解释，不要 markdown 代码块：\n"
-            + "{\"q\":\"题干\",\"opts\":[{\"l\":\"A\",\"t\":\"选项文字\",\"box\":[x1,y1,x2,y2]}],"
-            + "\"ans\":\"B\",\"why\":\"20字内的依据\"}\n"
+            + "{\"q\":\"题干\",\"type\":\"单选或多选或判断\",\"opts\":[{\"l\":\"A\",\"t\":\"选项文字\",\"box\":[x1,y1,x2,y2]}],"
+            + "\"ans\":\"B 或 ABD\",\"why\":\"20字内的依据\"}\n"
             + "box 是该选项**整行**（字母 + 全部文字）在图片中的矩形，用 0 到 1000 的相对坐标，原点左上角；不确定可以省略。\n"
-            + "如果是多选题，ans 写成字母组合如 \"ABD\"。";
+            + "如果是多选题，ans 写成字母组合如 \"ABD\"；判断题 ans 只给一个字母。";
 
     private VisionSolver() { }
 
@@ -105,19 +107,14 @@ public final class VisionSolver {
     /** 同步调用，调用方必须放在工作线程。 */
     public static Result ask(Context ctx, Bitmap bmp) { return ask(ctx, bmp, ""); }
 
-    /** 只读题、不判断答案：题干 + 选项（+坐标），交给后面的题库/文本模型。 */
-    public static Result read(Context ctx, Bitmap bmp, String pkg) {
-        return run(ctx, bmp, pkg, true);
-    }
-
     /**
      * @param pkg 当前页面包名，用来缓存「题目区域」；传空则一律整屏
      */
     public static Result ask(Context ctx, Bitmap bmp, String pkg) {
-        return run(ctx, bmp, pkg, false);
+        return run(ctx, bmp, pkg);
     }
 
-    private static Result run(Context ctx, Bitmap bmp, String pkg, boolean readOnly) {
+    private static Result run(Context ctx, Bitmap bmp, String pkg) {
         Result r = new Result();
         long t0 = System.currentTimeMillis();
         CloudSolver.Provider p = pick(ctx);
@@ -158,7 +155,7 @@ public final class VisionSolver {
         }
 
         try {
-            r = request(ctx, p, base, key, send, ox, oy, r, readOnly);
+            r = request(ctx, p, base, key, send, ox, oy, r);
 
             // 这道题可能比校准区域更高（选项折行、题干很长）：内容贴边就说明被切了，
             // 立刻用「上下各放宽一截」的区域重发一次。只在贴边时才多花这一次调用。
@@ -171,7 +168,7 @@ public final class VisionSolver {
                         cut2 = Bitmap.createBitmap(bmp, big.l, big.t, big.w, big.h);
                         Result r2 = new Result();
                         r2.source = r.source;
-                        r2 = request(ctx, p, base, key, cut2, big.l, big.t, r2, readOnly);
+                        r2 = request(ctx, p, base, key, cut2, big.l, big.t, r2);
                         if (r2.error == null) {
                             r2.cropped = true;
                             r = r2;
@@ -197,7 +194,7 @@ public final class VisionSolver {
                 }
                 Result r2 = new Result();
                 r2.source = r.source;
-                r2 = request(ctx, p, base, key, bmp, 0, 0, r2, readOnly);
+                r2 = request(ctx, p, base, key, bmp, 0, 0, r2);
                 r2.cropped = false;
                 r = r2;
             } else if (crop != null && r.error == null) {
@@ -217,7 +214,7 @@ public final class VisionSolver {
 
     /** 真正发请求 + 解析。ox/oy 是这张图相对整屏的偏移，用来把选项坐标还原成屏幕坐标。 */
     private static Result request(Context ctx, CloudSolver.Provider p, String base, String key,
-                                  Bitmap src, int ox, int oy, Result r, boolean readOnly) {
+                                  Bitmap src, int ox, int oy, Result r) {
         try {
             byte[] jpg = toJpeg(src);
             String b64 = android.util.Base64.encodeToString(jpg, android.util.Base64.NO_WRAP);
@@ -240,14 +237,7 @@ public final class VisionSolver {
              */
             String pid = p.id == null ? "" : p.id.toLowerCase();
             boolean think = pid.contains("deepseek");
-            if (readOnly) {
-                // 只是抄字，不需要思考；额度给够题干 + 四个选项 + 坐标即可
-                body.put("max_tokens", 700);
-                if (think) {
-                    body.put("thinking", new JSONObject().put("type", "disabled"));
-                    body.put("reasoning_effort", "none");
-                }
-            } else if (think) {
+            if (think) {
                 body.put("thinking", new JSONObject().put("type", "enabled"));
                 body.put("reasoning_effort", "low");
                 body.put("max_tokens", 1400);
@@ -256,7 +246,7 @@ public final class VisionSolver {
             }
 
             JSONArray content = new JSONArray();
-            content.put(new JSONObject().put("type", "text").put("text", readOnly ? PROMPT_READ : PROMPT));
+            content.put(new JSONObject().put("type", "text").put("text", PROMPT));
             content.put(new JSONObject().put("type", "image_url")
                     .put("image_url", new JSONObject().put("url", "data:image/jpeg;base64," + b64)));
             JSONArray msgs = new JSONArray();
@@ -276,8 +266,7 @@ public final class VisionSolver {
             r.raw = text;
             saveRaw(ctx, text, ox > 0 || oy > 0);
             parse(text, src.getWidth(), src.getHeight(), ox, oy, r);
-            if (!readOnly && r.answer.isEmpty() && r.error == null) r.error = "模型没给出答案";
-            if (readOnly && r.question.isEmpty() && r.error == null) r.error = "模型没读出题干";
+            if (r.answer.isEmpty() && r.error == null) r.error = "模型没给出答案";
         } catch (HttpError he) {
             r.error = he.getMessage();
             Log.w(TAG, "视觉答题失败 " + he.code + " " + he.getMessage());
